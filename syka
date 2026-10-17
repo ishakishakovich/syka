@@ -1,0 +1,399 @@
+\-- ============================================================
+-- CUCUMBER ULTIMATE | SilentAim + Aimbot + ESP + Enemies
+-- Для Arsenal (и других FPS). Полностью самодостаточный.
+-- Замени содержимое script.lua этим файлом.
+-- ============================================================
+local Players = game:GetService("Players")
+local RS      = game:GetService("RunService")
+local UIS     = game:GetService("UserInputService")
+local LP      = Players.LocalPlayer
+local cam     = workspace.CurrentCamera
+
+local Cfg = {
+    SilentAim       = false,
+    SilentAimKey    = Enum.KeyCode.Q,
+    SilentAimFOV    = 200,
+    SilentAimPart   = "Head",
+    SilentShowFOV   = true,
+
+    Aimbot          = false,
+    AimbotKey       = Enum.KeyCode.E,
+    AimbotSmooth    = 0.25,
+    AimbotFOV       = 250,
+    AimbotPart      = "Head",
+    AimbotShowFOV   = false,
+
+    ESP             = false,
+    ESPBox          = true,
+    ESPName         = true,
+    ESPDistance     = true,
+    ESPHealth       = true,
+    ESPTracer       = false,
+    ESPTeamCheck    = true,
+
+    Enemies         = {},   -- [name] = true
+}
+
+-- ===== МЕНЮ =====
+local ok, Rayfield = pcall(function()
+    return loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+end)
+if not ok or not Rayfield then
+    warn("[Cucumber] Rayfield не загрузился. Проверь интернет/эксплойт.")
+    return
+end
+
+local Win = Rayfield:CreateWindow({
+    Name = "Cucumber | Arsenal",
+    LoadingTitle = "Загрузка...",
+    LoadingSubtitle = "SilentAim + Aimbot + ESP",
+    ConfigurationSaving = { Enabled = true, FolderName = "Cucumber", FileName = "MainConfig" },
+})
+
+local AimTab  = Win:CreateTab("Aimbot")
+local ESPTab  = Win:CreateTab("ESP")
+local EnTab   = Win:CreateTab("Enemies")
+local MiscTab = Win:CreateTab("Misc")
+
+-- ===== AIMBOT TAB =====
+AimTab:CreateToggle({ Name="Silent Aim (невидимая наводка)", CurrentValue=false, Flag="SA",
+    Callback=function(v) Cfg.SilentAim = v end })
+
+AimTab:CreateSlider({ Name="Silent Aim FOV", Range={10,800}, Increment=10, Suffix="px",
+    CurrentValue=200, Flag="SAFOV", Callback=function(v) Cfg.SilentAimFOV = v end })
+
+AimTab:CreateKeybind({ Name="Silent Aim Key (удерживать)", CurrentKeybind="Q",
+    HoldToInteract=false, Flag="SAKey", Callback=function(k) Cfg.SilentAimKey = k end })
+
+AimTab:CreateDropdown({ Name="Silent Aim Hit Part",
+    Options={"Head","HumanoidRootPart","Torso"}, CurrentOption={"Head"}, Flag="SAPart",
+    Callback=function(opt) Cfg.SilentAimPart = opt[1] end })
+
+AimTab:CreateToggle({ Name="Показывать FOV Silent Aim", CurrentValue=true, Flag="SAFOVVis",
+    Callback=function(v) Cfg.SilentShowFOV = v end })
+
+AimTab:CreateDivider()
+
+AimTab:CreateToggle({ Name="Aimbot (плавная наводка камеры)", CurrentValue=false, Flag="AB",
+    Callback=function(v) Cfg.Aimbot = v end })
+
+AimTab:CreateSlider({ Name="Aimbot Smooth", Range={0,95}, Increment=1, Suffix="%",
+    CurrentValue=25, Flag="ABSmooth", Callback=function(v) Cfg.AimbotSmooth = v/100 end })
+
+AimTab:CreateSlider({ Name="Aimbot FOV", Range={10,800}, Increment=10,
+    CurrentValue=250, Flag="ABFOV", Callback=function(v) Cfg.AimbotFOV = v end })
+
+AimTab:CreateKeybind({ Name="Aimbot Key (удерживать)", CurrentKeybind="E",
+    HoldToInteract=false, Flag="ABKey", Callback=function(k) Cfg.AimbotKey = k end })
+
+AimTab:CreateToggle({ Name="Показывать FOV Aimbot", CurrentValue=false, Flag="ABFOVVis",
+    Callback=function(v) Cfg.AimbotShowFOV = v end })
+
+-- ===== ESP TAB =====
+ESPTab:CreateToggle({ Name="ESP (Wallhack)", CurrentValue=false, Flag="ESP",
+    Callback=function(v) Cfg.ESP = v end })
+
+ESPTab:CreateToggle({ Name="Бокс", CurrentValue=true, Flag="ESPBox",
+    Callback=function(v) Cfg.ESPBox = v end })
+
+ESPTab:CreateToggle({ Name="Имя", CurrentValue=true, Flag="ESPName",
+    Callback=function(v) Cfg.ESPName = v end })
+
+ESPTab:CreateToggle({ Name="Дистанция", CurrentValue=true, Flag="ESPDist",
+    Callback=function(v) Cfg.ESPDistance = v end })
+
+ESPTab:CreateToggle({ Name="Здоровье", CurrentValue=true, Flag="ESPHP",
+    Callback=function(v) Cfg.ESPHealth = v end })
+
+ESPTab:CreateToggle({ Name="Линия (Tracer) к игроку", CurrentValue=false, Flag="ESPTracer",
+    Callback=function(v) Cfg.ESPTracer = v end })
+
+ESPTab:CreateToggle({ Name="Показывать союзников", CurrentValue=false, Flag="ESPTeam",
+    Callback=function(v) Cfg.ESPTeamCheck = not v end })
+
+-- ===== ENEMIES TAB =====
+EnTab:CreateInput({
+    Name = "Добавить врага (имя игрока)",
+    PlaceholderText = "введи ник и Enter",
+    RemoveTextAfterFocusLost = true,
+    Callback = function(text)
+        if text ~= "" and not Cfg.Enemies[text] then
+            Cfg.Enemies[text] = true
+            Rayfield:Notify({ Title="Enemy added", Content=text, Duration=3 })
+            print("[Cucumber] Враг добавлен: "..text)
+        end
+    end,
+})
+
+EnTab:CreateButton({
+    Name = "Показать список врагов (в консоль)",
+    Callback = function()
+        local count = 0
+        for name in pairs(Cfg.Enemies) do
+            print("[Enemy] "..name)
+            count = count + 1
+        end
+        if count == 0 then print("[Cucumber] Список пуст") end
+    end,
+})
+
+EnTab:CreateButton({
+    Name = "Очистить список врагов",
+    Callback = function()
+        Cfg.Enemies = {}
+        Rayfield:Notify({ Title="Enemies", Content="Список очищен", Duration=3 })
+    end,
+})
+
+EnTab:CreateButton({
+    Name = "Добавить ВСЕХ в врагов (без team check)",
+    Callback = function()
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LP then Cfg.Enemies[p.Name] = true end
+        end
+        Rayfield:Notify({ Title="Enemies", Content="Все добавлены", Duration=3 })
+    end,
+})
+
+-- ===== MISC TAB =====
+MiscTab:CreateButton({
+    Name = "Перезагрузить скрипт",
+    Callback = function()
+        local scr = game:HttpGet("https://raw.githubusercontent.com/ishakishakovich/ishakishakovich2/main/script.lua")
+        if scr then loadstring(scr)() end
+    end,
+})
+
+-- ===== ХЕЛПЕРЫ =====
+local function isEnemy(other)
+    if other == LP then return false end
+    if Cfg.Enemies[other.Name] then return true end
+    if Cfg.ESPTeamCheck and LP.Team and other.Team == LP.Team then return false end
+    return true
+end
+
+local function getPart(ch, name)
+    return ch:FindFirstChild(name)
+        or ch:FindFirstChild("Head")
+        or ch:FindFirstChild("HumanoidRootPart")
+end
+
+local function validTarget(other)
+    if other == LP then return false end
+    local ch = other.Character
+    if not ch then return false end
+    local hum = ch:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then return false end
+    return true, ch
+end
+
+local function closestToPoint(fov, partName, screenPoint)
+    local best, bestD = nil, fov
+    for _, other in ipairs(Players:GetPlayers()) do
+        local ok, ch = validTarget(other)
+        if ok and isEnemy(other) then
+            local part = getPart(ch, partName)
+            if part then
+                local sp, on = cam:WorldToViewportPoint(part.Position)
+                if on then
+                    local d = (Vector2.new(sp.X, sp.Y) - screenPoint).Magnitude
+                    if d < bestD then bestD, best = d, part end
+                end
+            end
+        end
+    end
+    return best
+end
+
+-- ===== SILENT AIM HOOK =====
+local silentTarget = nil
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+    local method = getnamecallmethod()
+    if not Cfg.SilentAim or not silentTarget then
+        return oldNamecall(self, ...)
+    end
+    local args = {...}
+
+    if method == "Raycast" and self == workspace then
+        local origin, dir = args[1], args[2]
+        if typeof(origin) == "Vector3" and typeof(dir) == "Vector3" then
+            args[2] = (silentTarget.Position - origin).Unit * dir.Magnitude
+            return oldNamecall(self, unpack(args))
+        end
+    elseif method == "FindPartOnRay"
+        or method == "FindPartOnRayWithIgnoreList"
+        or method == "FindPartOnRayWithWhitelist" then
+        local ray = args[1]
+        if typeof(ray) == "Ray" then
+            args[1] = Ray.new(ray.Origin,
+                (silentTarget.Position - ray.Origin).Unit * 5000)
+            return oldNamecall(self, unpack(args))
+        end
+    elseif method == "ScreenPointToRay" and self == cam then
+        local oldRay = oldNamecall(self, ...)
+        if typeof(oldRay) == "Ray" then
+            local newDir = (silentTarget.Position - oldRay.Origin).Unit
+            return Ray.new(oldRay.Origin, newDir * 5000)
+        end
+    end
+    return oldNamecall(self, ...)
+end))
+
+-- ===== ОСНОВНОЙ ЦИКЛ =====
+RS.RenderStepped:Connect(function()
+    local mouse = UIS:GetMouseLocation()
+
+    if Cfg.SilentAim and UIS:IsKeyDown(Cfg.SilentAimKey) then
+        silentTarget = closestToPoint(Cfg.SilentAimFOV, Cfg.SilentAimPart, mouse)
+    else
+        silentTarget = nil
+    end
+
+    if Cfg.Aimbot and UIS:IsKeyDown(Cfg.AimbotKey) then
+        local center = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y/2)
+        local target = closestToPoint(Cfg.AimbotFOV, Cfg.AimbotPart, center)
+        if target then
+            local goal = CFrame.new(cam.CFrame.Position, target.Position)
+            local sm = math.clamp(Cfg.AimbotSmooth, 0, 0.95)
+            cam.CFrame = cam.CFrame:Lerp(goal, 1 - sm)
+        end
+    end
+end)
+
+-- ===== FOV КРУГИ =====
+local fovSA, fovAB
+if Drawing then
+    fovSA = Drawing.new("Circle")
+    fovSA.Thickness = 1; fovSA.Filled = false; fovSA.NumSides = 64
+    fovSA.Color = Color3.fromRGB(0, 255, 255); fovSA.Transparency = 0.7
+    fovAB = Drawing.new("Circle")
+    fovAB.Thickness = 1; fovAB.Filled = false; fovAB.NumSides = 64
+    fovAB.Color = Color3.fromRGB(255, 0, 0); fovAB.Transparency = 0.7
+
+    RS.RenderStepped:Connect(function()
+        local m = UIS:GetMouseLocation()
+        if fovSA then
+            fovSA.Visible = Cfg.SilentShowFOV and Cfg.SilentAim
+            fovSA.Position = m
+            fovSA.Radius = Cfg.SilentAimFOV
+        end
+        if fovAB then
+            fovAB.Visible = Cfg.AimbotShowFOV and Cfg.Aimbot
+            fovAB.Position = m
+            fovAB.Radius = Cfg.AimbotFOV
+        end
+    end)
+end
+
+-- ===== ESP =====
+local drawings = {}
+local function createESP(plr)
+    if drawings[plr] or not Drawing then return end
+    local d = {
+        box     = Drawing.new("Square"),
+        name    = Drawing.new("Text"),
+        dist    = Drawing.new("Text"),
+        hp      = Drawing.new("Square"),
+        tracer  = Drawing.new("Line"),
+    }
+    d.box.Thickness = 1; d.box.Filled = false
+    d.name.Size = 16; d.name.Center = true; d.name.Outline = true
+    d.dist.Size = 14; d.dist.Center = true; d.dist.Outline = true
+    d.dist.Color = Color3.fromRGB(200,200,200)
+    d.hp.Filled = true; d.hp.Thickness = 1
+    d.tracer.Thickness = 1
+    drawings[plr] = d
+end
+
+local function destroyESP(plr)
+    local d = drawings[plr]; if not d then return end
+    for _, o in pairs(d) do pcall(function() o:Remove() end) end
+    drawings[plr] = nil
+end
+
+local function hideESP(d)
+    for _, o in pairs(d) do o.Visible = false end
+end
+
+RS.RenderStepped:Connect(function()
+    if not Drawing then return end
+    if not Cfg.ESP then
+        for p in pairs(drawings) do destroyESP(p) end
+        return
+    end
+
+    for _, other in ipairs(Players:GetPlayers()) do
+        if other == LP then
+            destroyESP(other); continue
+        end
+
+        local ok, ch = validTarget(other)
+        if not ok then
+            destroyESP(other); continue
+        end
+
+        local root = ch:FindFirstChild("HumanoidRootPart") or ch:FindFirstChild("Head")
+        if not root then destroyESP(other); continue end
+
+        createESP(other)
+        local d = drawings[other]; if not d then continue end
+
+        local sp, on = cam:WorldToViewportPoint(root.Position)
+        if not on then hideESP(d); continue end
+
+        local hum = ch:FindFirstChildOfClass("Humanoid")
+        local enemy = isEnemy(other)
+        local col = enemy and Color3.fromRGB(255,60,60) or Color3.fromRGB(60,255,60)
+        local h, w = 60, 40
+        local tl = Vector2.new(sp.X - w/2, sp.Y - h/2)
+        local dist = (cam.CFrame.Position - root.Position).Magnitude
+
+        d.box.Visible = Cfg.ESPBox
+        if Cfg.ESPBox then
+            d.box.Size = Vector2.new(w, h); d.box.Position = tl; d.box.Color = col
+        end
+
+        d.name.Visible = Cfg.ESPName
+        if Cfg.ESPName then
+            d.name.Text = other.Name
+            d.name.Position = Vector2.new(sp.X, sp.Y - h/2 - 20)
+            d.name.Color = col
+        end
+
+        d.dist.Visible = Cfg.ESPDistance
+        if Cfg.ESPDistance then
+            d.dist.Text = string.format("[%d]", math.floor(dist))
+            d.dist.Position = Vector2.new(sp.X, sp.Y + h/2 + 4)
+        end
+
+        d.hp.Visible = Cfg.ESPHealth
+        if Cfg.ESPHealth and hum then
+            local pct = hum.Health / math.max(hum.MaxHealth, 1)
+            d.hp.Size = Vector2.new(4, h * pct)
+            d.hp.Position = Vector2.new(tl.X - 8, tl.Y + h * (1 - pct))
+            d.hp.Color = Color3.fromRGB(255*(1-pct), 255*pct, 0)
+        end
+
+        d.tracer.Visible = Cfg.ESPTracer
+        if Cfg.ESPTracer then
+            d.tracer.From = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y)
+            d.tracer.To = Vector2.new(sp.X, sp.Y)
+            d.tracer.Color = col
+        end
+    end
+end)
+
+Players.PlayerRemoving:Connect(destroyESP)
+
+-- ===== ЧАТ-КОМАНДЫ (бонус) =====
+LP.Chatted:Connect(function(msg)
+    local m = msg:lower()
+    if m == "/sa" then Cfg.SilentAim = not Cfg.SilentAim; print("[Cucumber] SA: "..tostring(Cfg.SilentAim)) end
+    if m == "/ab" then Cfg.Aimbot = not Cfg.Aimbot; print("[Cucumber] AB: "..tostring(Cfg.Aimbot)) end
+    if m == "/esp" then Cfg.ESP = not Cfg.ESP; print("[Cucumber] ESP: "..tostring(Cfg.ESP)) end
+    if m:sub(1,8) == "/enemy " then Cfg.Enemies[m:sub(9)] = true; print("[Enemy] "..m:sub(9)) end
+    if m:sub(1,9) == "/friend " then Cfg.Enemies[m:sub(10)] = nil; print("[Friend] "..m:sub(10)) end
+end)
+
+print("[Cucumber Ultimate] загружено | SA=Q | AB=E")
