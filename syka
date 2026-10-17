@@ -1,6 +1,5 @@
 -- ============================================================
--- syka v4 | Aim + ESP + Movement + Bhop + Chams + Spin + 3rd Person
--- Замени файл целиком.
+-- syka v4 | Aim + ESP + Movement + Bhop + NoRecoil + Chams + Spin + 3rd Person
 -- ============================================================
 local Players = game:GetService("Players")
 local RS      = game:GetService("RunService")
@@ -10,30 +9,17 @@ local LP      = Players.LocalPlayer
 local cam     = workspace.CurrentCamera
 
 local Cfg = {
-    -- Aim
     SilentAim = false, SilentAimFOV = 300, SilentAimKey = Enum.KeyCode.Q, SilentAimPart = "Head",
     SilentDebug = false,
     Aimbot = false, AimbotKey = Enum.KeyCode.E, AimbotSmooth = 0.2, AimbotFOV = 350, AimbotPart = "Head",
-    -- ESP
-    ESP = false, ESPBox = true, ESPName = true, ESPDistance = true, ESPHealth = true,
+    ESP = false, ESPName = true, ESPDistance = true, ESPHealth = true,
     ESPTeamCheck = true, ESPRainbow = false,
-    -- Movement
-    Speed = 16, JumpPower = 50, InfJump = false, Noclip = false, Fly = false, FlySpeed = 50,
-    Bhop = false,
-    -- Combat
+    Speed = 16, JumpPower = 50, InfJump = false, Noclip = false, Fly = false, FlySpeed = 50, Bhop = false,
     NoRecoil = false,
-    -- Visual
     Fullbright = false, Chams = false, Spin = false, ThirdPerson = false, ThirdPersonDist = 10,
-    -- Misc
     AntiAFK = true,
-    -- Enemies
     Enemies = {},
-    -- Keybinds (можно менять в меню)
-    Keys = {
-        SilentAim = Enum.KeyCode.Q,
-        Aimbot    = Enum.KeyCode.E,
-        Menu      = Enum.KeyCode.RightShift,
-    },
+    Keys = { SilentAim = Enum.KeyCode.Q, Aimbot = Enum.KeyCode.E, Menu = Enum.KeyCode.RightShift },
 }
 
 -- ===== GUI =====
@@ -55,8 +41,7 @@ local stroke = Instance.new("UIStroke", Main)
 stroke.Color = Color3.fromRGB(60, 60, 70); stroke.Thickness = 1
 
 local Title = Instance.new("Frame")
-Title.Size = UDim2.new(1, 0, 0, 38)
-Title.BackgroundColor3 = Color3.fromRGB(28, 28, 34)
+Title.Size = UDim2.new(1, 0, 0, 38); Title.BackgroundColor3 = Color3.fromRGB(28, 28, 34)
 Title.BorderSizePixel = 0; Title.Parent = Main
 Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 10)
 local fix = Instance.new("Frame")
@@ -78,7 +63,6 @@ CloseBtn.Font = Enum.Font.GothamBold; CloseBtn.TextSize = 14
 CloseBtn.AutoButtonColor = false; CloseBtn.Parent = Title
 Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 6)
 
--- Drag
 local dragging, dragStart, startPos
 Title.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -106,7 +90,6 @@ ll:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     Scroll.CanvasSize = UDim2.new(0, 0, 0, ll.AbsoluteContentSize.Y + 20)
 end)
 
--- UI helpers
 local function section(text)
     local l = Instance.new("TextLabel")
     l.Size = UDim2.new(1, 0, 0, 26); l.BackgroundTransparency = 1
@@ -204,7 +187,6 @@ local function button(text, cb)
     b.MouseButton1Click:Connect(function() if cb then cb() end end)
 end
 
--- Keybind changer: кнопка, при клике ждёт следующую нажатую клавишу
 local function keybind(name, currentKey, cb)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(1, 0, 0, 34); btn.BackgroundColor3 = Color3.fromRGB(34, 34, 42)
@@ -225,16 +207,14 @@ local function keybind(name, currentKey, cb)
     local waiting = false
     btn.MouseButton1Click:Connect(function()
         if waiting then return end
-        waiting = true
-        keyLbl.Text = "нажми..."
+        waiting = true; keyLbl.Text = "нажми..."
         local conn
         conn = UIS.InputBegan:Connect(function(input, gp)
             if gp then return end
             if input.UserInputType == Enum.UserInputType.Keyboard then
                 keyLbl.Text = input.KeyCode.Name
                 if cb then cb(input.KeyCode) end
-                waiting = false
-                conn:Disconnect()
+                waiting = false; conn:Disconnect()
             end
         end)
     end)
@@ -272,30 +252,21 @@ slider("JumpPower", 50, 300, 50, function(v)
     if h then h.UseJumpPower = true; h.JumpPower = v end
 end)
 toggle("Infinite Jump", false, function(v) Cfg.InfJump = v end)
-toggle("Bunny Hop (CS:GO style)", false, function(v) Cfg.Bhop = v end)
+toggle("Bunny Hop (CS:GO)", false, function(v) Cfg.Bhop = v end)
 toggle("Noclip", false, function(v) Cfg.Noclip = v end)
-toggle("Fly (WASD+Space)", false, function(v)
-    Cfg.Fly = v
-    if v then startFly() else stopFly() end
-end)
+toggle("Fly", false, function(v) Cfg.Fly = v; if v then startFly() else stopFly() end end)
 slider("Fly Speed", 10, 300, 50, function(v) Cfg.FlySpeed = v end)
 
 section("VISUAL")
 toggle("Fullbright", false, function(v)
     Cfg.Fullbright = v
     local L = game:GetService("Lighting")
-    if v then
-        L.Ambient = Color3.fromRGB(255,255,255); L.Brightness = 3; L.FogEnd = 100000
-    else
-        L.Ambient = Color3.fromRGB(70,70,70); L.Brightness = 1; L.FogEnd = 1000
-    end
+    if v then L.Ambient = Color3.new(1,1,1); L.Brightness = 3; L.FogEnd = 100000
+    else L.Ambient = Color3.fromRGB(70,70,70); L.Brightness = 1; L.FogEnd = 1000 end
 end)
 toggle("Chams (Highlight)", false, function(v) Cfg.Chams = v end)
 toggle("Spin Bot", false, function(v) Cfg.Spin = v end)
-toggle("Third Person", false, function(v)
-    Cfg.ThirdPerson = v
-    applyThirdPerson()
-end)
+toggle("Third Person", false, function(v) Cfg.ThirdPerson = v; applyThirdPerson() end)
 slider("Third Person Dist", 5, 30, 10, function(v) Cfg.ThirdPersonDist = v; applyThirdPerson() end)
 
 section("KEYBINDS")
@@ -308,8 +279,7 @@ toggle("Anti-AFK", true, function(v) Cfg.AntiAFK = v end)
 
 section("ENEMIES")
 inputBox("Введи ник и Enter", function(text)
-    Cfg.Enemies[text] = true
-    print("[syka] Enemy added: "..text)
+    Cfg.Enemies[text] = true; print("[syka] Enemy added: "..text)
 end)
 button("Добавить всех", function()
     for _, p in ipairs(Players:GetPlayers()) do
@@ -317,9 +287,7 @@ button("Добавить всех", function()
     end
     print("[syka] Все добавлены")
 end)
-button("Очистить", function()
-    Cfg.Enemies = {}; print("[syka] Список очищен")
-end)
+button("Очистить", function() Cfg.Enemies = {}; print("[syka] Список очищен") end)
 
 section("DEBUG")
 button("Проверить: Drawing / hookmetamethod", function()
@@ -329,7 +297,6 @@ button("Проверить: Drawing / hookmetamethod", function()
     print("[DEBUG] LP.Team =", LP.Team, "LP.TeamColor =", LP.TeamColor)
 end)
 
--- Hide/show
 local Reopen = Instance.new("TextButton")
 Reopen.Size = UDim2.new(0, 60, 0, 34); Reopen.Position = UDim2.new(0, 15, 0, 15)
 Reopen.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
@@ -357,11 +324,9 @@ local function validTarget(p)
     if not hum or hum.Health <= 0 then return false end
     return true, ch
 end
-
 local function getPart(ch, name)
     return ch:FindFirstChild(name) or ch:FindFirstChild("Head") or ch:FindFirstChild("HumanoidRootPart")
 end
-
 local function isEnemyESP(p)
     if p == LP then return false end
     if Cfg.Enemies[p.Name] then return true end
@@ -369,7 +334,6 @@ local function isEnemyESP(p)
     if Cfg.ESPTeamCheck and LP.TeamColor and p.TeamColor == LP.TeamColor then return false end
     return true
 end
-
 local function isEnemyAim(p)
     if p == LP then return false end
     if Cfg.Enemies[p.Name] then return true end
@@ -377,7 +341,6 @@ local function isEnemyAim(p)
     if p.TeamColor and LP.TeamColor and p.TeamColor == LP.TeamColor then return false end
     return true
 end
-
 local function closestTo(fov, partName, point, mode)
     local check = (mode == "aim") and isEnemyAim or isEnemyESP
     local best, bestD = nil, fov
@@ -396,6 +359,27 @@ local function closestTo(fov, partName, point, mode)
     end
     return best
 end
+
+-- ===== THIRD PERSON =====
+function applyThirdPerson()
+    if Cfg.ThirdPerson then
+        cam.CameraType = Enum.CameraType.Scriptable
+    else
+        cam.CameraType = Enum.CameraType.Custom
+    end
+end
+RS.RenderStepped:Connect(function()
+    if not Cfg.ThirdPerson then return end
+    local ch = LP.Character
+    local head = ch and (ch:FindFirstChild("Head") or ch:FindFirstChild("HumanoidRootPart"))
+    if not head then return end
+    local yaw = math.rad(0)
+    local mouse = UIS:GetMouseLocation()
+    -- Orbit camera по движению мыши (упрощённо: камера позади игрока)
+    local offset = Vector3.new(0, 2, Cfg.ThirdPersonDist)
+    local desiredPos = head.Position + (head.CFrame.LookVector * -Cfg.ThirdPersonDist) + Vector3.new(0, 2, 0)
+    cam.CFrame = CFrame.new(desiredPos, head.Position + Vector3.new(0, 1, 0))
+end)
 
 -- ===== FLY =====
 local flyBV, flyBG, flyConn
@@ -438,32 +422,26 @@ UIS.JumpRequest:Connect(function()
     if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
 end)
 
--- ===== BUNNY HOP (CS:GO style) =====
--- Пока зажат Space: авто-прыжок + сохраняем скорость (WalkSpeed не сбрасывается)
-local bhopSpeed = nil
+-- ===== BHOP (CS:GO style) =====
+local bhopSpeed = 0
 RS.Heartbeat:Connect(function()
     if not Cfg.Bhop then return end
     local ch = LP.Character
     local hum = ch and ch:FindFirstChildOfClass("Humanoid")
     local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
     if not hum or not hrp then return end
-
     if UIS:IsKeyDown(Enum.KeyCode.Space) then
-        -- сохраняем горизонтальную скорость
         local vel = hrp.AssemblyLinearVelocity
         local horiz = Vector3.new(vel.X, 0, vel.Z)
-        if horiz.Magnitude > (bhopSpeed or 0) then
-            bhopSpeed = horiz.Magnitude
-        end
+        if horiz.Magnitude > bhopSpeed then bhopSpeed = horiz.Magnitude end
         hum:ChangeState(Enum.HumanoidStateType.Jumping)
-        -- при приземлении возвращаем скорость
-        if hum.FloorMaterial ~= Enum.Material.Air and bhopSpeed then
+        if hum.FloorMaterial ~= Enum.Material.Air and bhopSpeed > 0 then
             hrp.AssemblyLinearVelocity = Vector3.new(
                 horiz.Unit.X * bhopSpeed, hrp.AssemblyLinearVelocity.Y, horiz.Unit.Z * bhopSpeed
             )
         end
     else
-        bhopSpeed = nil
+        bhopSpeed = 0
     end
 end)
 
@@ -478,43 +456,24 @@ RS.Stepped:Connect(function()
 end)
 
 -- ===== NO RECOIL =====
--- Убираем отдачу: каждый кадр возвращаем камеру к исходной ориентации (только по X — вертикаль)
-local recoilBaseCF = nil
 RS.RenderStepped:Connect(function()
-    if not Cfg.NoRecoil then
-        recoilBaseCF = nil
-        return
-    end
-    if not recoilBaseCF then
-        recoilBaseCF = cam.CFrame
-        return
-    end
-    -- Считаем "ожидаемую" ориентацию от ввода мыши; отдача — это отклонение.
-    -- Простой способ: плавно тянем камеру обратно к последней "спокойной" ориентации.
-    -- В Roblox камера при выстреле дёргается вверх — компенсируем вниз.
-    local cur = cam.CFrame
-    local goal = CFrame.new(cur.Position, cur.Position + cur.LookVector)
-    -- Компенсация по pitch: если lookVector.Y вырос (камеру задрало) — опускаем.
-    local lv = cur.LookVector
+    if not Cfg.NoRecoil then return end
+    local lv = cam.CFrame.LookVector
     if lv.Y > 0.02 then
-        local corrected = CFrame.new(cur.Position, cur.Position + Vector3.new(lv.X, lv.Y - 0.02, lv.Z))
+        local corrected = CFrame.new(cam.CFrame.Position, cam.CFrame.Position + Vector3.new(lv.X, lv.Y - 0.02, lv.Z))
         cam.CFrame = cam.CFrame:Lerp(corrected, 0.5)
     end
-    recoilBaseCF = cam.CFrame
 end)
 
 -- ===== ANTI-AFK =====
 task.spawn(function()
     local vim = game:GetService("VirtualUser")
     LP.Idled:Connect(function()
-        if Cfg.AntiAFK then
-            vim:CaptureController()
-            vim:ClickButton2(Vector2.new())
-        end
+        if Cfg.AntiAFK then vim:CaptureController(); vim:ClickButton2(Vector2.new()) end
     end)
 end)
 
--- ===== SILENT AIM HOOKS =====
+-- ===== SILENT AIM =====
 local silentTarget = nil
 local hasHooks = (hookmetamethod ~= nil) and (newcclosure ~= nil) and (getnamecallmethod ~= nil)
 if hasHooks then
@@ -543,9 +502,138 @@ if hasHooks then
         end
         return oldNamecall(self, ...)
     end))
-
     local realMouse = LP:GetMouse()
     local oldIndex
     oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
         if Cfg.SilentAim and silentTarget and rawequal(self, realMouse) then
             if key == "Hit" then return CFrame.new(silentTarget.Position)
+            elseif key == "UnitRay" then
+                local o = cam.CFrame.Position
+                return Ray.new(o, (silentTarget.Position - o).Unit * 5000)
+            end
+        end
+        return oldIndex(self, key)
+    end))
+    print("[syka] hooks installed")
+else
+    warn("[syka] hookmetamethod недоступен — Silent Aim не работает")
+end
+
+-- ===== MAIN LOOP =====
+RS.RenderStepped:Connect(function()
+    local mouse = UIS:GetMouseLocation()
+    if Cfg.SilentAim and UIS:IsKeyDown(Cfg.SilentAimKey) then
+        silentTarget = closestTo(Cfg.SilentAimFOV, Cfg.SilentAimPart, mouse, "aim")
+    else
+        silentTarget = nil
+    end
+    if Cfg.Aimbot and UIS:IsKeyDown(Cfg.AimbotKey) then
+        local center = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y/2)
+        local t = closestTo(Cfg.AimbotFOV, Cfg.AimbotPart, center, "aim")
+        if t then
+            local goal = CFrame.new(cam.CFrame.Position, t.Position)
+            local sm = math.clamp(Cfg.AimbotSmooth, 0, 0.95)
+            cam.CFrame = cam.CFrame:Lerp(goal, 1 - sm)
+        end
+    end
+end)
+
+-- ===== CHAMS =====
+local chams = {}
+RS.RenderStepped:Connect(function()
+    if not Cfg.Chams then
+        for p, h in pairs(chams) do pcall(function() h:Destroy() end); chams[p] = nil end
+        return
+    end
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p == LP then continue end
+        local ok, ch = validTarget(p)
+        if not ok or not isEnemyESP(p) then
+            if chams[p] then chams[p]:Destroy(); chams[p] = nil end
+            continue
+        end
+        if not chams[p] then
+            local h = Instance.new("Highlight")
+            h.FillColor = Color3.fromRGB(255, 70, 70)
+            h.OutlineColor = Color3.fromRGB(255, 255, 255)
+            h.FillTransparency = 0.5
+            h.Parent = ch
+            chams[p] = h
+        end
+        chams[p].Adornee = ch
+    end
+end)
+
+-- ===== SPIN BOT =====
+RS.Heartbeat:Connect(function()
+    if not Cfg.Spin then return end
+    local ch = LP.Character
+    local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(15), 0)
+    end
+end)
+
+-- ===== ESP =====
+local espFolders = {}
+local function destroyESP(p)
+    local f = espFolders[p]
+    if f then pcall(function() f:Destroy() end); espFolders[p] = nil end
+end
+local function createESP(p, ch)
+    if espFolders[p] then return espFolders[p] end
+    local head = ch:FindFirstChild("Head") or ch:FindFirstChild("HumanoidRootPart")
+    if not head then return nil end
+    local bb = Instance.new("BillboardGui")
+    bb.Name = "sykaESP"; bb.Size = UDim2.new(0, 120, 0, 80)
+    bb.StudsOffset = Vector3.new(0, 2.5, 0); bb.AlwaysOnTop = true
+    bb.Adornee = head; bb.Parent = head
+    local nameLbl = Instance.new("TextLabel")
+    nameLbl.Name = "NameLbl"; nameLbl.Size = UDim2.new(1, 0, 0, 20)
+    nameLbl.BackgroundTransparency = 1; nameLbl.TextColor3 = Color3.fromRGB(255, 80, 80)
+    nameLbl.Font = Enum.Font.GothamBold; nameLbl.TextSize = 14
+    nameLbl.TextStrokeTransparency = 0.3; nameLbl.Text = p.Name; nameLbl.Parent = bb
+    local distLbl = Instance.new("TextLabel")
+    distLbl.Name = "DistLbl"; distLbl.Size = UDim2.new(1, 0, 0, 18)
+    distLbl.Position = UDim2.new(0, 0, 0, 20); distLbl.BackgroundTransparency = 1
+    distLbl.TextColor3 = Color3.fromRGB(220, 220, 220); distLbl.Font = Enum.Font.Gotham
+    distLbl.TextSize = 12; distLbl.TextStrokeTransparency = 0.3; distLbl.Text = "[0]"; distLbl.Parent = bb
+    local hpBg = Instance.new("Frame")
+    hpBg.Name = "HpBg"; hpBg.Size = UDim2.new(0, 60, 0, 5); hpBg.Position = UDim2.new(0.5, -30, 0, 42)
+    hpBg.BackgroundColor3 = Color3.fromRGB(30, 30, 30); hpBg.BorderSizePixel = 0; hpBg.Parent = bb
+    Instance.new("UICorner", hpBg).CornerRadius = UDim.new(1, 0)
+    local hpFill = Instance.new("Frame")
+    hpFill.Name = "HpFill"; hpFill.Size = UDim2.new(1, 0, 1, 0)
+    hpFill.BackgroundColor3 = Color3.fromRGB(80, 255, 80); hpFill.BorderSizePixel = 0; hpFill.Parent = hpBg
+    Instance.new("UICorner", hpFill).CornerRadius = UDim.new(1, 0)
+    espFolders[p] = bb; return bb
+end
+
+RS.RenderStepped:Connect(function()
+    if not Cfg.ESP then
+        for p in pairs(espFolders) do destroyESP(p) end
+        return
+    end
+    local hue = (tick() % 5) / 5
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p == LP then destroyESP(p) continue end
+        local ok, ch = validTarget(p)
+        if not ok or not isEnemyESP(p) then destroyESP(p) continue end
+        local bb = createESP(p, ch); if not bb then continue end
+        local head = ch:FindFirstChild("Head") or ch:FindFirstChild("HumanoidRootPart")
+        if bb.Adornee ~= head then bb.Adornee = head end
+        local dist = (cam.CFrame.Position - head.Position).Magnitude
+        bb.NameLbl.Visible = Cfg.ESPName; bb.DistLbl.Visible = Cfg.ESPDistance; bb.HpBg.Visible = Cfg.ESPHealth
+        bb.DistLbl.Text = "["..math.floor(dist).."]"
+        bb.NameLbl.TextColor3 = Cfg.ESPRainbow and Color3.fromHSV(hue, 1, 1) or Color3.fromRGB(255, 80, 80)
+        local hum = ch:FindFirstChildOfClass("Humanoid")
+        if hum then
+            local pct = math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1)
+            bb.HpBg.HpFill.Size = UDim2.new(pct, 0, 1, 0)
+            bb.HpBg.HpFill.BackgroundColor3 = Color3.fromRGB(255*(1-pct), 255*pct, 0)
+        end
+    end
+end)
+Players.PlayerRemoving:Connect(destroyESP)
+
+print("[syka] v4 loaded | SA=Q | AB=E | Menu=RightShift")
