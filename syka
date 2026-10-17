@@ -1,202 +1,301 @@
-\-- ============================================================
--- CUCUMBER ULTIMATE | SilentAim + Aimbot + ESP + Enemies
--- Для Arsenal (и других FPS). Полностью самодостаточный.
--- Замени содержимое script.lua этим файлом.
+-- ============================================================
+-- syka | menu — SilentAim + Aimbot + ESP + Enemies
+-- Без внешних зависимостей. Открывается при запуске.
 -- ============================================================
 local Players = game:GetService("Players")
 local RS      = game:GetService("RunService")
 local UIS     = game:GetService("UserInputService")
+local TS      = game:GetService("TweenService")
 local LP      = Players.LocalPlayer
 local cam     = workspace.CurrentCamera
 
 local Cfg = {
-    SilentAim       = false,
-    SilentAimKey    = Enum.KeyCode.Q,
-    SilentAimFOV    = 200,
-    SilentAimPart   = "Head",
-    SilentShowFOV   = true,
-
-    Aimbot          = false,
-    AimbotKey       = Enum.KeyCode.E,
-    AimbotSmooth    = 0.25,
-    AimbotFOV       = 250,
-    AimbotPart      = "Head",
-    AimbotShowFOV   = false,
-
-    ESP             = false,
-    ESPBox          = true,
-    ESPName         = true,
-    ESPDistance     = true,
-    ESPHealth       = true,
-    ESPTracer       = false,
-    ESPTeamCheck    = true,
-
-    Enemies         = {},   -- [name] = true
+    SilentAim = false, SilentAimFOV = 200, SilentAimKey = Enum.KeyCode.Q, SilentAimPart = "Head",
+    Aimbot = false, AimbotKey = Enum.KeyCode.E, AimbotSmooth = 0.25, AimbotFOV = 250, AimbotPart = "Head",
+    ESP = false, ESPBox = true, ESPName = true, ESPDistance = true, ESPHealth = true,
+    ESPTracer = false, ESPTeamCheck = true,
+    Enemies = {},
 }
 
--- ===== МЕНЮ =====
-local ok, Rayfield = pcall(function()
-    return loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
-end)
-if not ok or not Rayfield then
-    warn("[Cucumber] Rayfield не загрузился. Проверь интернет/эксплойт.")
-    return
+-- ===== GUI BASE =====
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "sykaMenu"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.DisplayOrder = 999
+do
+    local ok = pcall(function() ScreenGui.Parent = game:GetService("CoreGui") end)
+    if not ok or not ScreenGui.Parent then
+        ScreenGui.Parent = LP:WaitForChild("PlayerGui")
+    end
 end
 
-local Win = Rayfield:CreateWindow({
-    Name = "Cucumber | Arsenal",
-    LoadingTitle = "Загрузка...",
-    LoadingSubtitle = "SilentAim + Aimbot + ESP",
-    ConfigurationSaving = { Enabled = true, FolderName = "Cucumber", FileName = "MainConfig" },
-})
+local Main = Instance.new("Frame")
+Main.Size = UDim2.new(0, 480, 0, 560)
+Main.Position = UDim2.new(0.5, -240, 0.5, -280)
+Main.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+Main.BorderSizePixel = 0
+Main.Active = true
+Main.Parent = ScreenGui
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
+local stroke = Instance.new("UIStroke", Main)
+stroke.Color = Color3.fromRGB(60, 60, 70); stroke.Thickness = 1
 
-local AimTab  = Win:CreateTab("Aimbot")
-local ESPTab  = Win:CreateTab("ESP")
-local EnTab   = Win:CreateTab("Enemies")
-local MiscTab = Win:CreateTab("Misc")
+local Title = Instance.new("Frame")
+Title.Size = UDim2.new(1, 0, 0, 38)
+Title.BackgroundColor3 = Color3.fromRGB(28, 28, 34)
+Title.BorderSizePixel = 0
+Title.Parent = Main
+Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 10)
+local fix = Instance.new("Frame")
+fix.Size = UDim2.new(1, 0, 0, 10); fix.Position = UDim2.new(0, 0, 1, -10)
+fix.BackgroundColor3 = Color3.fromRGB(28, 28, 34); fix.BorderSizePixel = 0; fix.Parent = Title
 
--- ===== AIMBOT TAB =====
-AimTab:CreateToggle({ Name="Silent Aim (невидимая наводка)", CurrentValue=false, Flag="SA",
-    Callback=function(v) Cfg.SilentAim = v end })
+local TitleText = Instance.new("TextLabel")
+TitleText.Size = UDim2.new(1, -100, 1, 0); TitleText.Position = UDim2.new(0, 16, 0, 0)
+TitleText.BackgroundTransparency = 1
+TitleText.Text = "syka"
+TitleText.TextColor3 = Color3.fromRGB(255, 70, 70)
+TitleText.Font = Enum.Font.GothamBold; TitleText.TextSize = 18
+TitleText.TextXAlignment = Enum.TextXAlignment.Left
+TitleText.Parent = Title
 
-AimTab:CreateSlider({ Name="Silent Aim FOV", Range={10,800}, Increment=10, Suffix="px",
-    CurrentValue=200, Flag="SAFOV", Callback=function(v) Cfg.SilentAimFOV = v end })
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 28, 0, 28); CloseBtn.Position = UDim2.new(1, -36, 0, 5)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(55, 55, 65)
+CloseBtn.Text = "✕"; CloseBtn.TextColor3 = Color3.fromRGB(240, 240, 240)
+CloseBtn.Font = Enum.Font.GothamBold; CloseBtn.TextSize = 14
+CloseBtn.AutoButtonColor = false; CloseBtn.Parent = Title
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 6)
 
-AimTab:CreateKeybind({ Name="Silent Aim Key (удерживать)", CurrentKeybind="Q",
-    HoldToInteract=false, Flag="SAKey", Callback=function(k) Cfg.SilentAimKey = k end })
+-- Dragging
+local dragging, dragStart, startPos
+Title.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true; dragStart = input.Position; startPos = Main.Position
+    end
+end)
+UIS.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local d = input.Position - dragStart
+        Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+    end
+end)
+UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
 
-AimTab:CreateDropdown({ Name="Silent Aim Hit Part",
-    Options={"Head","HumanoidRootPart","Torso"}, CurrentOption={"Head"}, Flag="SAPart",
-    Callback=function(opt) Cfg.SilentAimPart = opt[1] end })
+-- Scroll
+local Scroll = Instance.new("ScrollingFrame")
+Scroll.Size = UDim2.new(1, -20, 1, -58); Scroll.Position = UDim2.new(0, 10, 0, 48)
+Scroll.BackgroundTransparency = 1; Scroll.BorderSizePixel = 0
+Scroll.ScrollBarThickness = 4; Scroll.ScrollBarImageColor3 = Color3.fromRGB(90, 90, 100)
+Scroll.CanvasSize = UDim2.new(0, 0, 0, 0); Scroll.Parent = Main
+local ll = Instance.new("UIListLayout", Scroll)
+ll.SortOrder = Enum.SortOrder.LayoutOrder; ll.Padding = UDim.new(0, 6)
+ll:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    Scroll.CanvasSize = UDim2.new(0, 0, 0, ll.AbsoluteContentSize.Y + 20)
+end)
 
-AimTab:CreateToggle({ Name="Показывать FOV Silent Aim", CurrentValue=true, Flag="SAFOVVis",
-    Callback=function(v) Cfg.SilentShowFOV = v end })
+-- ===== GUI HELPERS =====
+local function section(text)
+    local l = Instance.new("TextLabel")
+    l.Size = UDim2.new(1, 0, 0, 26); l.BackgroundTransparency = 1
+    l.Text = text; l.TextColor3 = Color3.fromRGB(255, 70, 70)
+    l.Font = Enum.Font.GothamBold; l.TextSize = 13
+    l.TextXAlignment = Enum.TextXAlignment.Left; l.Parent = Scroll
+end
 
-AimTab:CreateDivider()
+local function toggle(name, def, cb)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 0, 34); btn.BackgroundColor3 = Color3.fromRGB(34, 34, 42)
+    btn.Text = ""; btn.AutoButtonColor = false; btn.BorderSizePixel = 0; btn.Parent = Scroll
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -70, 1, 0); lbl.Position = UDim2.new(0, 12, 0, 0)
+    lbl.BackgroundTransparency = 1; lbl.Text = name
+    lbl.TextColor3 = Color3.fromRGB(220, 220, 220); lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 14; lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.Parent = btn
+    local ind = Instance.new("Frame")
+    ind.Size = UDim2.new(0, 40, 0, 18); ind.Position = UDim2.new(1, -50, 0.5, -9)
+    ind.BackgroundColor3 = def and Color3.fromRGB(255, 70, 70) or Color3.fromRGB(52, 52, 62)
+    ind.Parent = btn; Instance.new("UICorner", ind).CornerRadius = UDim.new(1, 0)
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.new(0, 14, 0, 14)
+    knob.Position = def and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
+    knob.BackgroundColor3 = Color3.fromRGB(240, 240, 240); knob.Parent = ind
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+    local state = def
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        TS:Create(ind, TweenInfo.new(0.15), {BackgroundColor3 = state and Color3.fromRGB(255,70,70) or Color3.fromRGB(52,52,62)}):Play()
+        TS:Create(knob, TweenInfo.new(0.15), {Position = state and UDim2.new(1,-16,0.5,-7) or UDim2.new(0,2,0.5,-7)}):Play()
+        if cb then cb(state) end
+    end)
+end
 
-AimTab:CreateToggle({ Name="Aimbot (плавная наводка камеры)", CurrentValue=false, Flag="AB",
-    Callback=function(v) Cfg.Aimbot = v end })
+local function slider(name, mn, mx, def, cb)
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1, 0, 0, 50); f.BackgroundColor3 = Color3.fromRGB(34, 34, 42)
+    f.BorderSizePixel = 0; f.Parent = Scroll
+    Instance.new("UICorner", f).CornerRadius = UDim.new(0, 6)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -80, 0, 20); lbl.Position = UDim2.new(0, 12, 0, 4)
+    lbl.BackgroundTransparency = 1; lbl.Text = name
+    lbl.TextColor3 = Color3.fromRGB(220,220,220); lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 13; lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.Parent = f
+    local val = Instance.new("TextLabel")
+    val.Size = UDim2.new(0, 70, 0, 20); val.Position = UDim2.new(1, -82, 0, 4)
+    val.BackgroundTransparency = 1; val.Text = tostring(def)
+    val.TextColor3 = Color3.fromRGB(255,70,70); val.Font = Enum.Font.GothamBold
+    val.TextSize = 13; val.TextXAlignment = Enum.TextXAlignment.Right; val.Parent = f
+    local bar = Instance.new("Frame")
+    bar.Size = UDim2.new(1, -24, 0, 6); bar.Position = UDim2.new(0, 12, 1, -16)
+    bar.BackgroundColor3 = Color3.fromRGB(52, 52, 62); bar.BorderSizePixel = 0; bar.Parent = f
+    Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
+    local fill = Instance.new("Frame")
+    fill.Size = UDim2.new((def-mn)/(mx-mn), 0, 1, 0)
+    fill.BackgroundColor3 = Color3.fromRGB(255,70,70); fill.BorderSizePixel = 0; fill.Parent = bar
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+    local drag2 = false
+    local function upd(input)
+        local rel = math.clamp((input.Position.X - bar.AbsolutePosition.X)/bar.AbsoluteSize.X, 0, 1)
+        local v = math.floor(mn + rel*(mx-mn))
+        fill.Size = UDim2.new(rel, 0, 1, 0); val.Text = tostring(v)
+        if cb then cb(v) end
+    end
+    bar.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then drag2 = true; upd(i) end
+    end)
+    UIS.InputChanged:Connect(function(i)
+        if drag2 and i.UserInputType == Enum.UserInputType.MouseMovement then upd(i) end
+    end)
+    UIS.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then drag2 = false end
+    end)
+end
 
-AimTab:CreateSlider({ Name="Aimbot Smooth", Range={0,95}, Increment=1, Suffix="%",
-    CurrentValue=25, Flag="ABSmooth", Callback=function(v) Cfg.AimbotSmooth = v/100 end })
-
-AimTab:CreateSlider({ Name="Aimbot FOV", Range={10,800}, Increment=10,
-    CurrentValue=250, Flag="ABFOV", Callback=function(v) Cfg.AimbotFOV = v end })
-
-AimTab:CreateKeybind({ Name="Aimbot Key (удерживать)", CurrentKeybind="E",
-    HoldToInteract=false, Flag="ABKey", Callback=function(k) Cfg.AimbotKey = k end })
-
-AimTab:CreateToggle({ Name="Показывать FOV Aimbot", CurrentValue=false, Flag="ABFOVVis",
-    Callback=function(v) Cfg.AimbotShowFOV = v end })
-
--- ===== ESP TAB =====
-ESPTab:CreateToggle({ Name="ESP (Wallhack)", CurrentValue=false, Flag="ESP",
-    Callback=function(v) Cfg.ESP = v end })
-
-ESPTab:CreateToggle({ Name="Бокс", CurrentValue=true, Flag="ESPBox",
-    Callback=function(v) Cfg.ESPBox = v end })
-
-ESPTab:CreateToggle({ Name="Имя", CurrentValue=true, Flag="ESPName",
-    Callback=function(v) Cfg.ESPName = v end })
-
-ESPTab:CreateToggle({ Name="Дистанция", CurrentValue=true, Flag="ESPDist",
-    Callback=function(v) Cfg.ESPDistance = v end })
-
-ESPTab:CreateToggle({ Name="Здоровье", CurrentValue=true, Flag="ESPHP",
-    Callback=function(v) Cfg.ESPHealth = v end })
-
-ESPTab:CreateToggle({ Name="Линия (Tracer) к игроку", CurrentValue=false, Flag="ESPTracer",
-    Callback=function(v) Cfg.ESPTracer = v end })
-
-ESPTab:CreateToggle({ Name="Показывать союзников", CurrentValue=false, Flag="ESPTeam",
-    Callback=function(v) Cfg.ESPTeamCheck = not v end })
-
--- ===== ENEMIES TAB =====
-EnTab:CreateInput({
-    Name = "Добавить врага (имя игрока)",
-    PlaceholderText = "введи ник и Enter",
-    RemoveTextAfterFocusLost = true,
-    Callback = function(text)
-        if text ~= "" and not Cfg.Enemies[text] then
-            Cfg.Enemies[text] = true
-            Rayfield:Notify({ Title="Enemy added", Content=text, Duration=3 })
-            print("[Cucumber] Враг добавлен: "..text)
+local function inputBox(ph, cb)
+    local b = Instance.new("TextBox")
+    b.Size = UDim2.new(1, 0, 0, 34); b.BackgroundColor3 = Color3.fromRGB(34,34,42)
+    b.BorderSizePixel = 0; b.PlaceholderText = ph
+    b.PlaceholderColor3 = Color3.fromRGB(140,140,150)
+    b.Text = ""; b.TextColor3 = Color3.fromRGB(220,220,220)
+    b.Font = Enum.Font.Gotham; b.TextSize = 13
+    b.TextXAlignment = Enum.TextXAlignment.Left
+    b.ClearTextOnFocus = false; b.Parent = Scroll
+    local p = Instance.new("UIPadding", b); p.PaddingLeft = UDim.new(0, 12)
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+    b.FocusLost:Connect(function(enter)
+        if enter and b.Text ~= "" then
+            if cb then cb(b.Text) end
+            b.Text = ""
         end
-    end,
-})
+    end)
+end
 
-EnTab:CreateButton({
-    Name = "Показать список врагов (в консоль)",
-    Callback = function()
-        local count = 0
-        for name in pairs(Cfg.Enemies) do
-            print("[Enemy] "..name)
-            count = count + 1
-        end
-        if count == 0 then print("[Cucumber] Список пуст") end
-    end,
-})
+local function button(text, cb)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1, 0, 0, 34); b.BackgroundColor3 = Color3.fromRGB(44,44,54)
+    b.BorderSizePixel = 0; b.Text = text
+    b.TextColor3 = Color3.fromRGB(220,220,220); b.Font = Enum.Font.GothamMedium
+    b.TextSize = 13; b.AutoButtonColor = false; b.Parent = Scroll
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+    b.MouseEnter:Connect(function() TS:Create(b, TweenInfo.new(0.1), {BackgroundColor3=Color3.fromRGB(60,60,72)}):Play() end)
+    b.MouseLeave:Connect(function() TS:Create(b, TweenInfo.new(0.1), {BackgroundColor3=Color3.fromRGB(44,44,54)}):Play() end)
+    b.MouseButton1Click:Connect(function() if cb then cb() end end)
+end
 
-EnTab:CreateButton({
-    Name = "Очистить список врагов",
-    Callback = function()
-        Cfg.Enemies = {}
-        Rayfield:Notify({ Title="Enemies", Content="Список очищен", Duration=3 })
-    end,
-})
+-- ===== BUILD UI =====
+section("AIMBOT")
+toggle("Silent Aim (Q)", false, function(v) Cfg.SilentAim = v end)
+slider("Silent Aim FOV", 10, 800, 200, function(v) Cfg.SilentAimFOV = v end)
+toggle("Aimbot (Camera, E)", false, function(v) Cfg.Aimbot = v end)
+slider("Aimbot Smooth %", 0, 95, 25, function(v) Cfg.AimbotSmooth = v/100 end)
+slider("Aimbot FOV", 10, 800, 250, function(v) Cfg.AimbotFOV = v end)
 
-EnTab:CreateButton({
-    Name = "Добавить ВСЕХ в врагов (без team check)",
-    Callback = function()
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LP then Cfg.Enemies[p.Name] = true end
-        end
-        Rayfield:Notify({ Title="Enemies", Content="Все добавлены", Duration=3 })
-    end,
-})
+section("ESP / WALLHACK")
+toggle("ESP Enabled", false, function(v) Cfg.ESP = v end)
+toggle("Box", true, function(v) Cfg.ESPBox = v end)
+toggle("Name", true, function(v) Cfg.ESPName = v end)
+toggle("Distance", true, function(v) Cfg.ESPDistance = v end)
+toggle("Health", true, function(v) Cfg.ESPHealth = v end)
+toggle("Tracer", false, function(v) Cfg.ESPTracer = v end)
+toggle("Show Teammates", false, function(v) Cfg.ESPTeamCheck = not v end)
 
--- ===== MISC TAB =====
-MiscTab:CreateButton({
-    Name = "Перезагрузить скрипт",
-    Callback = function()
-        local scr = game:HttpGet("https://raw.githubusercontent.com/ishakishakovich/ishakishakovich2/main/script.lua")
-        if scr then loadstring(scr)() end
-    end,
-})
+section("ENEMIES")
+inputBox("Введи ник и Enter", function(text)
+    if not Cfg.Enemies[text] then
+        Cfg.Enemies[text] = true
+        print("[syka] Enemy added: "..text)
+    end
+end)
+button("Добавить всех врагов", function()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LP then Cfg.Enemies[p.Name] = true end
+    end
+    print("[syka] Все добавлены")
+end)
+button("Очистить список", function()
+    Cfg.Enemies = {}
+    print("[syka] Список очищен")
+end)
 
--- ===== ХЕЛПЕРЫ =====
-local function isEnemy(other)
-    if other == LP then return false end
-    if Cfg.Enemies[other.Name] then return true end
-    if Cfg.ESPTeamCheck and LP.Team and other.Team == LP.Team then return false end
+-- ===== HIDE / SHOW =====
+local Reopen = Instance.new("TextButton")
+Reopen.Size = UDim2.new(0, 60, 0, 34)
+Reopen.Position = UDim2.new(0, 15, 0, 15)
+Reopen.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+Reopen.Text = "syka"; Reopen.TextColor3 = Color3.fromRGB(255, 70, 70)
+Reopen.Font = Enum.Font.GothamBold; Reopen.TextSize = 13
+Reopen.AutoButtonColor = false; Reopen.Visible = false; Reopen.Parent = ScreenGui
+Instance.new("UICorner", Reopen).CornerRadius = UDim.new(0, 8)
+local rstroke = Instance.new("UIStroke", Reopen)
+rstroke.Color = Color3.fromRGB(255, 70, 70); rstroke.Thickness = 1
+
+CloseBtn.MouseButton1Click:Connect(function()
+    Main.Visible = false; Reopen.Visible = true
+end)
+Reopen.MouseButton1Click:Connect(function()
+    Main.Visible = true; Reopen.Visible = false
+end)
+UIS.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.RightShift then
+        Main.Visible = not Main.Visible
+        Reopen.Visible = not Main.Visible
+    end
+end)
+
+-- ===== AIM / ESP LOGIC =====
+local function isEnemy(p)
+    if p == LP then return false end
+    if Cfg.Enemies[p.Name] then return true end
+    if Cfg.ESPTeamCheck and LP.Team and p.Team == LP.Team then return false end
     return true
 end
-
 local function getPart(ch, name)
-    return ch:FindFirstChild(name)
-        or ch:FindFirstChild("Head")
-        or ch:FindFirstChild("HumanoidRootPart")
+    return ch:FindFirstChild(name) or ch:FindFirstChild("Head") or ch:FindFirstChild("HumanoidRootPart")
 end
-
-local function validTarget(other)
-    if other == LP then return false end
-    local ch = other.Character
-    if not ch then return false end
+local function validTarget(p)
+    if p == LP then return false end
+    local ch = p.Character; if not ch then return false end
     local hum = ch:FindFirstChildOfClass("Humanoid")
     if not hum or hum.Health <= 0 then return false end
     return true, ch
 end
-
-local function closestToPoint(fov, partName, screenPoint)
+local function closestTo(fov, partName, point)
     local best, bestD = nil, fov
-    for _, other in ipairs(Players:GetPlayers()) do
-        local ok, ch = validTarget(other)
-        if ok and isEnemy(other) then
+    for _, p in ipairs(Players:GetPlayers()) do
+        local ok, ch = validTarget(p)
+        if ok and isEnemy(p) then
             local part = getPart(ch, partName)
             if part then
                 local sp, on = cam:WorldToViewportPoint(part.Position)
                 if on then
-                    local d = (Vector2.new(sp.X, sp.Y) - screenPoint).Magnitude
+                    local d = (Vector2.new(sp.X, sp.Y) - point).Magnitude
                     if d < bestD then bestD, best = d, part end
                 end
             end
@@ -205,97 +304,78 @@ local function closestToPoint(fov, partName, screenPoint)
     return best
 end
 
--- ===== SILENT AIM HOOK =====
+-- Silent aim: hook namecall
 local silentTarget = nil
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
     local method = getnamecallmethod()
-    if not Cfg.SilentAim or not silentTarget then
-        return oldNamecall(self, ...)
-    end
+    if not Cfg.SilentAim or not silentTarget then return oldNamecall(self, ...) end
     local args = {...}
-
     if method == "Raycast" and self == workspace then
-        local origin, dir = args[1], args[2]
-        if typeof(origin) == "Vector3" and typeof(dir) == "Vector3" then
-            args[2] = (silentTarget.Position - origin).Unit * dir.Magnitude
+        local o, d = args[1], args[2]
+        if typeof(o) == "Vector3" and typeof(d) == "Vector3" then
+            args[2] = (silentTarget.Position - o).Unit * d.Magnitude
             return oldNamecall(self, unpack(args))
         end
-    elseif method == "FindPartOnRay"
-        or method == "FindPartOnRayWithIgnoreList"
-        or method == "FindPartOnRayWithWhitelist" then
-        local ray = args[1]
-        if typeof(ray) == "Ray" then
-            args[1] = Ray.new(ray.Origin,
-                (silentTarget.Position - ray.Origin).Unit * 5000)
+    elseif method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" or method == "FindPartOnRayWithWhitelist" then
+        local r = args[1]
+        if typeof(r) == "Ray" then
+            args[1] = Ray.new(r.Origin, (silentTarget.Position - r.Origin).Unit * 5000)
             return oldNamecall(self, unpack(args))
         end
     elseif method == "ScreenPointToRay" and self == cam then
-        local oldRay = oldNamecall(self, ...)
-        if typeof(oldRay) == "Ray" then
-            local newDir = (silentTarget.Position - oldRay.Origin).Unit
-            return Ray.new(oldRay.Origin, newDir * 5000)
+        local r = oldNamecall(self, ...)
+        if typeof(r) == "Ray" then
+            return Ray.new(r.Origin, (silentTarget.Position - r.Origin).Unit * 5000)
         end
     end
     return oldNamecall(self, ...)
 end))
 
--- ===== ОСНОВНОЙ ЦИКЛ =====
+-- Silent aim: hook Mouse.Hit / Mouse.UnitRay (Arsenal uses this heavily)
+local realMouse = LP:GetMouse()
+local oldIndex
+oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
+    if Cfg.SilentAim and silentTarget and rawequal(self, realMouse) then
+        if key == "Hit" then
+            return CFrame.new(silentTarget.Position)
+        elseif key == "UnitRay" then
+            local o = cam.CFrame.Position
+            return Ray.new(o, (silentTarget.Position - o).Unit * 5000)
+        end
+    end
+    return oldIndex(self, key)
+end))
+
+-- Main aim loop
 RS.RenderStepped:Connect(function()
     local mouse = UIS:GetMouseLocation()
-
     if Cfg.SilentAim and UIS:IsKeyDown(Cfg.SilentAimKey) then
-        silentTarget = closestToPoint(Cfg.SilentAimFOV, Cfg.SilentAimPart, mouse)
+        silentTarget = closestTo(Cfg.SilentAimFOV, Cfg.SilentAimPart, mouse)
     else
         silentTarget = nil
     end
-
     if Cfg.Aimbot and UIS:IsKeyDown(Cfg.AimbotKey) then
         local center = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y/2)
-        local target = closestToPoint(Cfg.AimbotFOV, Cfg.AimbotPart, center)
-        if target then
-            local goal = CFrame.new(cam.CFrame.Position, target.Position)
+        local t = closestTo(Cfg.AimbotFOV, Cfg.AimbotPart, center)
+        if t then
+            local goal = CFrame.new(cam.CFrame.Position, t.Position)
             local sm = math.clamp(Cfg.AimbotSmooth, 0, 0.95)
             cam.CFrame = cam.CFrame:Lerp(goal, 1 - sm)
         end
     end
 end)
 
--- ===== FOV КРУГИ =====
-local fovSA, fovAB
-if Drawing then
-    fovSA = Drawing.new("Circle")
-    fovSA.Thickness = 1; fovSA.Filled = false; fovSA.NumSides = 64
-    fovSA.Color = Color3.fromRGB(0, 255, 255); fovSA.Transparency = 0.7
-    fovAB = Drawing.new("Circle")
-    fovAB.Thickness = 1; fovAB.Filled = false; fovAB.NumSides = 64
-    fovAB.Color = Color3.fromRGB(255, 0, 0); fovAB.Transparency = 0.7
-
-    RS.RenderStepped:Connect(function()
-        local m = UIS:GetMouseLocation()
-        if fovSA then
-            fovSA.Visible = Cfg.SilentShowFOV and Cfg.SilentAim
-            fovSA.Position = m
-            fovSA.Radius = Cfg.SilentAimFOV
-        end
-        if fovAB then
-            fovAB.Visible = Cfg.AimbotShowFOV and Cfg.Aimbot
-            fovAB.Position = m
-            fovAB.Radius = Cfg.AimbotFOV
-        end
-    end)
-end
-
--- ===== ESP =====
+-- ESP
 local drawings = {}
-local function createESP(plr)
-    if drawings[plr] or not Drawing then return end
+local function createESP(p)
+    if drawings[p] or not Drawing then return end
     local d = {
-        box     = Drawing.new("Square"),
-        name    = Drawing.new("Text"),
-        dist    = Drawing.new("Text"),
-        hp      = Drawing.new("Square"),
-        tracer  = Drawing.new("Line"),
+        box = Drawing.new("Square"),
+        name = Drawing.new("Text"),
+        dist = Drawing.new("Text"),
+        hp = Drawing.new("Square"),
+        tracer = Drawing.new("Line"),
     }
     d.box.Thickness = 1; d.box.Filled = false
     d.name.Size = 16; d.name.Center = true; d.name.Outline = true
@@ -303,17 +383,12 @@ local function createESP(plr)
     d.dist.Color = Color3.fromRGB(200,200,200)
     d.hp.Filled = true; d.hp.Thickness = 1
     d.tracer.Thickness = 1
-    drawings[plr] = d
+    drawings[p] = d
 end
-
-local function destroyESP(plr)
-    local d = drawings[plr]; if not d then return end
+local function destroyESP(p)
+    local d = drawings[p]; if not d then return end
     for _, o in pairs(d) do pcall(function() o:Remove() end) end
-    drawings[plr] = nil
-end
-
-local function hideESP(d)
-    for _, o in pairs(d) do o.Visible = false end
+    drawings[p] = nil
 end
 
 RS.RenderStepped:Connect(function()
@@ -322,59 +397,45 @@ RS.RenderStepped:Connect(function()
         for p in pairs(drawings) do destroyESP(p) end
         return
     end
-
-    for _, other in ipairs(Players:GetPlayers()) do
-        if other == LP then
-            destroyESP(other); continue
-        end
-
-        local ok, ch = validTarget(other)
-        if not ok then
-            destroyESP(other); continue
-        end
-
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p == LP then destroyESP(p) continue end
+        local ok, ch = validTarget(p)
+        if not ok then destroyESP(p) continue end
         local root = ch:FindFirstChild("HumanoidRootPart") or ch:FindFirstChild("Head")
-        if not root then destroyESP(other); continue end
-
-        createESP(other)
-        local d = drawings[other]; if not d then continue end
-
+        if not root then destroyESP(p) continue end
+        createESP(p)
+        local d = drawings[p]; if not d then continue end
         local sp, on = cam:WorldToViewportPoint(root.Position)
-        if not on then hideESP(d); continue end
-
+        if not on then
+            for _, o in pairs(d) do o.Visible = false end
+            continue
+        end
         local hum = ch:FindFirstChildOfClass("Humanoid")
-        local enemy = isEnemy(other)
-        local col = enemy and Color3.fromRGB(255,60,60) or Color3.fromRGB(60,255,60)
+        local col = isEnemy(p) and Color3.fromRGB(255,60,60) or Color3.fromRGB(60,255,60)
         local h, w = 60, 40
         local tl = Vector2.new(sp.X - w/2, sp.Y - h/2)
         local dist = (cam.CFrame.Position - root.Position).Magnitude
 
         d.box.Visible = Cfg.ESPBox
-        if Cfg.ESPBox then
-            d.box.Size = Vector2.new(w, h); d.box.Position = tl; d.box.Color = col
-        end
-
+        if Cfg.ESPBox then d.box.Size = Vector2.new(w,h); d.box.Position = tl; d.box.Color = col end
         d.name.Visible = Cfg.ESPName
         if Cfg.ESPName then
-            d.name.Text = other.Name
+            d.name.Text = p.Name
             d.name.Position = Vector2.new(sp.X, sp.Y - h/2 - 20)
             d.name.Color = col
         end
-
         d.dist.Visible = Cfg.ESPDistance
         if Cfg.ESPDistance then
-            d.dist.Text = string.format("[%d]", math.floor(dist))
+            d.dist.Text = "["..math.floor(dist).."]"
             d.dist.Position = Vector2.new(sp.X, sp.Y + h/2 + 4)
         end
-
         d.hp.Visible = Cfg.ESPHealth
         if Cfg.ESPHealth and hum then
             local pct = hum.Health / math.max(hum.MaxHealth, 1)
-            d.hp.Size = Vector2.new(4, h * pct)
-            d.hp.Position = Vector2.new(tl.X - 8, tl.Y + h * (1 - pct))
+            d.hp.Size = Vector2.new(4, h*pct)
+            d.hp.Position = Vector2.new(tl.X - 8, tl.Y + h*(1-pct))
             d.hp.Color = Color3.fromRGB(255*(1-pct), 255*pct, 0)
         end
-
         d.tracer.Visible = Cfg.ESPTracer
         if Cfg.ESPTracer then
             d.tracer.From = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y)
@@ -383,17 +444,6 @@ RS.RenderStepped:Connect(function()
         end
     end
 end)
-
 Players.PlayerRemoving:Connect(destroyESP)
 
--- ===== ЧАТ-КОМАНДЫ (бонус) =====
-LP.Chatted:Connect(function(msg)
-    local m = msg:lower()
-    if m == "/sa" then Cfg.SilentAim = not Cfg.SilentAim; print("[Cucumber] SA: "..tostring(Cfg.SilentAim)) end
-    if m == "/ab" then Cfg.Aimbot = not Cfg.Aimbot; print("[Cucumber] AB: "..tostring(Cfg.Aimbot)) end
-    if m == "/esp" then Cfg.ESP = not Cfg.ESP; print("[Cucumber] ESP: "..tostring(Cfg.ESP)) end
-    if m:sub(1,8) == "/enemy " then Cfg.Enemies[m:sub(9)] = true; print("[Enemy] "..m:sub(9)) end
-    if m:sub(1,9) == "/friend " then Cfg.Enemies[m:sub(10)] = nil; print("[Friend] "..m:sub(10)) end
-end)
-
-print("[Cucumber Ultimate] загружено | SA=Q | AB=E")
+print("[syka] loaded | SilentAim=Q | Aimbot=E | Menu=RightShift")
