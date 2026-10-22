@@ -1,6 +1,6 @@
 -- ============================================================
--- DA HOOD — Lock Menu v3
--- RightShift = menu | E (hold) = lock | End = unload
+-- DA HOOD — Lock Menu v5 (purple + single lock button)
+-- RightShift = menu | E/RMB/Q (hold) = lock | End = unload
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -16,7 +16,6 @@ local cam = workspace.CurrentCamera
 -- ============================================================
 local C = {
     enabled       = true,
-    key           = Enum.KeyCode.E,
     mode          = "hold",
     smooth        = 0.2,
     targetPart    = "Head",
@@ -28,12 +27,17 @@ local C = {
     showDistance  = true,
     showHud       = true,
     selectedName  = nil,
+    lockButton    = "E",   -- "E" / "RMB" / "Q"
 }
 
-local COL_ACCENT  = Color3.fromRGB(120, 230, 100)
-local COL_ACCENT2 = Color3.fromRGB(80, 180, 70)
+local COL_ACCENT  = Color3.fromRGB(180, 120, 255)
+local COL_ACCENT2 = Color3.fromRGB(120, 90, 200)
 local COL_DANGER  = Color3.fromRGB(255, 90, 100)
-local COL_OFF     = Color3.fromRGB(40, 60, 40)
+local COL_OFF     = Color3.fromRGB(55, 40, 70)
+local COL_BG      = Color3.fromRGB(14, 10, 20)
+local COL_HEADER  = Color3.fromRGB(20, 14, 30)
+local COL_PANEL   = Color3.fromRGB(24, 16, 34)
+local COL_BTN     = Color3.fromRGB(30, 20, 40)
 
 -- ============================================================
 -- STATE
@@ -86,6 +90,17 @@ local function findTarget()
     return nil
 end
 
+local function isLockKeyDown()
+    if C.lockButton == "E" then
+        return UIS:IsKeyDown(Enum.KeyCode.E)
+    elseif C.lockButton == "RMB" then
+        return UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+    elseif C.lockButton == "Q" then
+        return UIS:IsKeyDown(Enum.KeyCode.Q)
+    end
+    return false
+end
+
 local function clearHighlight()
     if highlight then
         pcall(function() highlight:Destroy() end)
@@ -119,7 +134,7 @@ hud.Parent = plr:WaitForChild("PlayerGui")
 local statusFrame = Instance.new("Frame", hud)
 statusFrame.Size = UDim2.new(0, 260, 0, 36)
 statusFrame.Position = UDim2.new(0.5, -130, 1, -150)
-statusFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
+statusFrame.BackgroundColor3 = COL_BG
 statusFrame.BackgroundTransparency = 0.3
 statusFrame.BorderSizePixel = 0
 Instance.new("UICorner", statusFrame).CornerRadius = UDim.new(0, 8)
@@ -208,7 +223,7 @@ local glow = Instance.new("Frame", gui)
 glow.Size = UDim2.new(0, MW+20, 0, MH+20)
 glow.Position = UDim2.new(0.5, -(MW+20)/2, 0.5, -(MH+20)/2)
 glow.BackgroundColor3 = COL_ACCENT
-glow.BackgroundTransparency = 0.95
+glow.BackgroundTransparency = 0.9
 glow.BorderSizePixel = 0
 glow.ZIndex = 0
 glow.Visible = false
@@ -218,7 +233,7 @@ local menu = Instance.new("Frame", gui)
 menu.Name = "Main"
 menu.Size = UDim2.new(0, MW, 0, MH)
 menu.Position = UDim2.new(0.5, -MW/2, 0.5, -MH/2)
-menu.BackgroundColor3 = Color3.fromRGB(10, 14, 10)
+menu.BackgroundColor3 = COL_BG
 menu.BorderSizePixel = 0
 menu.Visible = false
 menu.ClipsDescendants = true
@@ -234,7 +249,7 @@ topLine.BorderSizePixel = 0
 local headerBg = Instance.new("Frame", menu)
 headerBg.Size = UDim2.new(1, 0, 0, 60)
 headerBg.Position = UDim2.new(0, 0, 0, 3)
-headerBg.BackgroundColor3 = Color3.fromRGB(14, 20, 14)
+headerBg.BackgroundColor3 = COL_HEADER
 headerBg.BorderSizePixel = 0
 
 local title = Instance.new("TextLabel", headerBg)
@@ -252,7 +267,7 @@ subtitle.Size = UDim2.new(1, -60, 0, 14)
 subtitle.Position = UDim2.new(0, 16, 0, 36)
 subtitle.BackgroundTransparency = 1
 subtitle.Font = Enum.Font.Gotham
-subtitle.Text = "RightShift = menu  •  E = lock  •  End = unload"
+subtitle.Text = "RightShift = menu  •  End = unload"
 subtitle.TextColor3 = COL_ACCENT2
 subtitle.TextSize = 10
 subtitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -260,20 +275,19 @@ subtitle.TextXAlignment = Enum.TextXAlignment.Left
 local closeBtn = Instance.new("TextButton", headerBg)
 closeBtn.Size = UDim2.new(0, 30, 0, 30)
 closeBtn.Position = UDim2.new(1, -42, 0, 15)
-closeBtn.BackgroundColor3 = Color3.fromRGB(20, 28, 20)
+closeBtn.BackgroundColor3 = COL_BTN
 closeBtn.BorderSizePixel = 0
 closeBtn.Font = Enum.Font.GothamBold
 closeBtn.Text = "×"
-closeBtn.TextColor3 = Color3.fromRGB(100, 140, 100)
+closeBtn.TextColor3 = COL_ACCENT2
 closeBtn.TextSize = 18
 closeBtn.AutoButtonColor = false
 corner(closeBtn, 6)
 
--- LEFT: player list
 local leftPanel = Instance.new("Frame", menu)
 leftPanel.Size = UDim2.new(0, 260, 1, -75)
 leftPanel.Position = UDim2.new(0, 10, 0, 68)
-leftPanel.BackgroundColor3 = Color3.fromRGB(14, 20, 14)
+leftPanel.BackgroundColor3 = COL_PANEL
 leftPanel.BorderSizePixel = 0
 corner(leftPanel, 8)
 pad(leftPanel, 10)
@@ -301,7 +315,6 @@ local listLayout = Instance.new("UIListLayout", scroll)
 listLayout.Padding = UDim.new(0, 4)
 listLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
--- RIGHT: settings
 local rightPanel = Instance.new("Frame", menu)
 rightPanel.Size = UDim2.new(1, -290, 1, -75)
 rightPanel.Position = UDim2.new(0, 280, 0, 68)
@@ -353,7 +366,7 @@ local function makeToggle(label, key, onChange)
     local knob = Instance.new("Frame", track)
     knob.Size = UDim2.new(0, 16, 0, 16)
     knob.Position = C[key] and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
-    knob.BackgroundColor3 = Color3.fromRGB(240, 255, 240)
+    knob.BackgroundColor3 = Color3.fromRGB(240, 235, 255)
     knob.BorderSizePixel = 0
     corner(knob, 8)
     local btn = Instance.new("TextButton", row)
@@ -441,7 +454,7 @@ end
 local function makeButton(label, callback, color)
     local btn = Instance.new("TextButton", rightScroll)
     btn.Size = UDim2.new(1, 0, 0, 32)
-    btn.BackgroundColor3 = Color3.fromRGB(20, 28, 20)
+    btn.BackgroundColor3 = COL_BTN
     btn.BorderSizePixel = 0
     btn.Font = Enum.Font.GothamBold
     btn.Text = label
@@ -452,10 +465,10 @@ local function makeButton(label, callback, color)
     stroke(btn, COL_OFF, 1, 0.3)
     btn.MouseEnter:Connect(function()
         Tween:Create(btn, TweenInfo.new(0.12), {BackgroundColor3 = COL_ACCENT}):Play()
-        btn.TextColor3 = Color3.fromRGB(10, 14, 10)
+        btn.TextColor3 = Color3.fromRGB(14, 10, 20)
     end)
     btn.MouseLeave:Connect(function()
-        Tween:Create(btn, TweenInfo.new(0.12), {BackgroundColor3 = Color3.fromRGB(20, 28, 20)}):Play()
+        Tween:Create(btn, TweenInfo.new(0.12), {BackgroundColor3 = COL_BTN}):Play()
         btn.TextColor3 = color or Color3.fromRGB(230, 240, 230)
     end)
     btn.MouseButton1Click:Connect(function()
@@ -465,11 +478,46 @@ local function makeButton(label, callback, color)
     return btn
 end
 
--- SETTINGS
+-- LOCK BUTTON (одна кнопка)
+makeLabel("LOCK BUTTON")
+local keyRow = Instance.new("Frame", rightScroll)
+keyRow.Size = UDim2.new(1, 0, 0, 30)
+keyRow.BackgroundTransparency = 1
+local keyBtns = {}
+
+local function makeKeyBtn(text, val, xPos, w)
+    local b = Instance.new("TextButton", keyRow)
+    b.Size = UDim2.new(0, w, 1, 0)
+    b.Position = UDim2.new(0, xPos, 0, 0)
+    b.BackgroundColor3 = (C.lockButton == val) and COL_ACCENT or COL_BTN
+    b.BorderSizePixel = 0
+    b.Font = Enum.Font.GothamBold
+    b.Text = text
+    b.TextColor3 = (C.lockButton == val) and Color3.fromRGB(14, 10, 20) or Color3.fromRGB(230, 240, 230)
+    b.TextSize = 11
+    b.AutoButtonColor = false
+    corner(b, 5)
+    b.MouseButton1Click:Connect(function()
+        C.lockButton = val
+        for _, c in ipairs(keyBtns) do
+            local active = (c.val == val)
+            c.btn.BackgroundColor3 = active and COL_ACCENT or COL_BTN
+            c.btn.TextColor3 = active and Color3.fromRGB(14, 10, 20) or Color3.fromRGB(230, 240, 230)
+        end
+    end)
+    table.insert(keyBtns, {btn = b, val = val})
+end
+
+makeKeyBtn("E", "E", 0, 78)
+makeKeyBtn("RMB", "RMB", 82, 78)
+makeKeyBtn("Q", "Q", 164, 78)
+
+-- ПОВЕДЕНИЕ
 makeLabel("ПОВЕДЕНИЕ")
 makeToggle("Team check", "teamCheck")
 makeToggle("Ignore dead", "ignoreDead")
 
+-- ВИД
 makeLabel("ВИД ЦЕЛИ")
 makeToggle("Highlight (обводка)", "showHighlight", function(v)
     if not v then clearHighlight() end
@@ -478,9 +526,11 @@ makeToggle("Dot (точка над головой)", "showDot")
 makeToggle("Arrow (стрелка к цели)", "showArrow")
 makeToggle("Distance (дистанция)", "showDistance")
 
+-- ТЕХНИКА
 makeLabel("ТЕХНИКА")
 makeSlider("Smooth", "smooth", 0.05, 1, "")
 
+-- КУДА
 makeLabel("КУДА ЛОЧИТЬ")
 local partRow = Instance.new("Frame", rightScroll)
 partRow.Size = UDim2.new(1, 0, 0, 30)
@@ -490,11 +540,11 @@ local function makePartBtn(text, val, xPos, w)
     local b = Instance.new("TextButton", partRow)
     b.Size = UDim2.new(0, w, 1, 0)
     b.Position = UDim2.new(0, xPos, 0, 0)
-    b.BackgroundColor3 = (C.targetPart == val) and COL_ACCENT or Color3.fromRGB(20, 28, 20)
+    b.BackgroundColor3 = (C.targetPart == val) and COL_ACCENT or COL_BTN
     b.BorderSizePixel = 0
     b.Font = Enum.Font.GothamBold
     b.Text = text
-    b.TextColor3 = (C.targetPart == val) and Color3.fromRGB(10, 14, 10) or Color3.fromRGB(230, 240, 230)
+    b.TextColor3 = (C.targetPart == val) and Color3.fromRGB(14, 10, 20) or Color3.fromRGB(230, 240, 230)
     b.TextSize = 11
     b.AutoButtonColor = false
     corner(b, 5)
@@ -502,8 +552,8 @@ local function makePartBtn(text, val, xPos, w)
         C.targetPart = val
         for _, c in ipairs(partBtns) do
             local active = (c.val == val)
-            c.btn.BackgroundColor3 = active and COL_ACCENT or Color3.fromRGB(20, 28, 20)
-            c.btn.TextColor3 = active and Color3.fromRGB(10, 14, 10) or Color3.fromRGB(230, 240, 230)
+            c.btn.BackgroundColor3 = active and COL_ACCENT or COL_BTN
+            c.btn.TextColor3 = active and Color3.fromRGB(14, 10, 20) or Color3.fromRGB(230, 240, 230)
         end
     end)
     table.insert(partBtns, {btn = b, val = val})
@@ -512,18 +562,19 @@ makePartBtn("HEAD", "Head", 0, 78)
 makePartBtn("CHEST", "UpperTorso", 82, 78)
 makePartBtn("ROOT", "HumanoidRootPart", 164, 78)
 
-makeLabel("РЕЖИМ КНОПКИ E")
+-- РЕЖИМ
+makeLabel("РЕЖИМ")
 local modeRow = Instance.new("Frame", rightScroll)
 modeRow.Size = UDim2.new(1, 0, 0, 30)
 modeRow.BackgroundTransparency = 1
 local btnHold = Instance.new("TextButton", modeRow)
 btnHold.Size = UDim2.new(0.5, -3, 1, 0)
 btnHold.Position = UDim2.new(0, 0, 0, 0)
-btnHold.BackgroundColor3 = (C.mode == "hold") and COL_ACCENT or Color3.fromRGB(20, 28, 20)
+btnHold.BackgroundColor3 = (C.mode == "hold") and COL_ACCENT or COL_BTN
 btnHold.BorderSizePixel = 0
 btnHold.Font = Enum.Font.GothamBold
 btnHold.Text = "HOLD"
-btnHold.TextColor3 = (C.mode == "hold") and Color3.fromRGB(10, 14, 10) or Color3.fromRGB(230, 240, 230)
+btnHold.TextColor3 = (C.mode == "hold") and Color3.fromRGB(14, 10, 20) or Color3.fromRGB(230, 240, 230)
 btnHold.TextSize = 11
 btnHold.AutoButtonColor = false
 corner(btnHold, 5)
@@ -531,20 +582,20 @@ corner(btnHold, 5)
 local btnToggle = Instance.new("TextButton", modeRow)
 btnToggle.Size = UDim2.new(0.5, -3, 1, 0)
 btnToggle.Position = UDim2.new(0.5, 3, 0, 0)
-btnToggle.BackgroundColor3 = (C.mode == "toggle") and COL_ACCENT or Color3.fromRGB(20, 28, 20)
+btnToggle.BackgroundColor3 = (C.mode == "toggle") and COL_ACCENT or COL_BTN
 btnToggle.BorderSizePixel = 0
 btnToggle.Font = Enum.Font.GothamBold
 btnToggle.Text = "TOGGLE"
-btnToggle.TextColor3 = (C.mode == "toggle") and Color3.fromRGB(10, 14, 10) or Color3.fromRGB(230, 240, 230)
+btnToggle.TextColor3 = (C.mode == "toggle") and Color3.fromRGB(14, 10, 20) or Color3.fromRGB(230, 240, 230)
 btnToggle.TextSize = 11
 btnToggle.AutoButtonColor = false
 corner(btnToggle, 5)
 
 local function updateModeBtns()
-    btnHold.BackgroundColor3 = (C.mode == "hold") and COL_ACCENT or Color3.fromRGB(20, 28, 20)
-    btnHold.TextColor3 = (C.mode == "hold") and Color3.fromRGB(10, 14, 10) or Color3.fromRGB(230, 240, 230)
-    btnToggle.BackgroundColor3 = (C.mode == "toggle") and COL_ACCENT or Color3.fromRGB(20, 28, 20)
-    btnToggle.TextColor3 = (C.mode == "toggle") and Color3.fromRGB(10, 14, 10) or Color3.fromRGB(230, 240, 230)
+    btnHold.BackgroundColor3 = (C.mode == "hold") and COL_ACCENT or COL_BTN
+    btnHold.TextColor3 = (C.mode == "hold") and Color3.fromRGB(14, 10, 20) or Color3.fromRGB(230, 240, 230)
+    btnToggle.BackgroundColor3 = (C.mode == "toggle") and COL_ACCENT or COL_BTN
+    btnToggle.TextColor3 = (C.mode == "toggle") and Color3.fromRGB(14, 10, 20) or Color3.fromRGB(230, 240, 230)
 end
 btnHold.MouseButton1Click:Connect(function() C.mode = "hold"; updateModeBtns() end)
 btnToggle.MouseButton1Click:Connect(function() C.mode = "toggle"; updateModeBtns() end)
@@ -555,13 +606,15 @@ makeButton("Unload", function()
     clearHighlight()
 end, COL_DANGER)
 
+-- ============================================================
 -- PLAYER LIST
+-- ============================================================
 local listRows = {}
 
 local function buildRow(p)
     local row = Instance.new("TextButton", scroll)
     row.Size = UDim2.new(1, -4, 0, 34)
-    row.BackgroundColor3 = Color3.fromRGB(20, 28, 20)
+    row.BackgroundColor3 = COL_BTN
     row.BackgroundTransparency = 1
     row.BorderSizePixel = 0
     row.Text = ""
@@ -602,10 +655,10 @@ local function buildRow(p)
         if on then
             row.BackgroundTransparency = 0
             row.BackgroundColor3 = COL_ACCENT
-            name.TextColor3 = Color3.fromRGB(10, 14, 10)
-            info.TextColor3 = Color3.fromRGB(10, 14, 10)
+            name.TextColor3 = Color3.fromRGB(14, 10, 20)
+            info.TextColor3 = Color3.fromRGB(14, 10, 20)
             badge.Text = "✓"
-            badge.TextColor3 = Color3.fromRGB(10, 14, 10)
+            badge.TextColor3 = Color3.fromRGB(14, 10, 20)
         else
             row.BackgroundTransparency = 1
             name.TextColor3 = Color3.fromRGB(230, 240, 230)
@@ -682,6 +735,10 @@ end)
 -- ============================================================
 RS.RenderStepped:Connect(function(dt)
     if not C.enabled then return end
+
+    if C.mode == "hold" then
+        locked = isLockKeyDown()
+    end
 
     if not locked then
         if C.showHud then
@@ -764,29 +821,21 @@ RS.RenderStepped:Connect(function(dt)
 end)
 
 -- ============================================================
--- INPUT
+-- INPUT (для toggle режима)
 -- ============================================================
 UIS.InputBegan:Connect(function(input, gp)
     if gp then return end
-    if input.KeyCode == C.key then
-        if C.mode == "toggle" then
-            locked = not locked
-            targetPart = nil
-            targetPlr = nil
-        else
-            locked = true
-            targetPart = nil
-            targetPlr = nil
-        end
-    end
-end)
+    if C.mode ~= "toggle" then return end
 
-UIS.InputEnded:Connect(function(input)
-    if C.mode == "hold" and input.KeyCode == C.key then
-        locked = false
+    local hit = false
+    if C.lockButton == "E" and input.KeyCode == Enum.KeyCode.E then hit = true end
+    if C.lockButton == "Q" and input.KeyCode == Enum.KeyCode.Q then hit = true end
+    if C.lockButton == "RMB" and input.UserInputType == Enum.UserInputType.MouseButton2 then hit = true end
+
+    if hit then
+        locked = not locked
         targetPart = nil
         targetPlr = nil
-        clearHighlight()
     end
 end)
 
@@ -866,4 +915,4 @@ UIS.InputBegan:Connect(function(i, gp)
     end
 end)
 
-print("[DA HOOD LOCK v3] loaded")
+print("[DA HOOD LOCK v5] single button + purple loaded")
