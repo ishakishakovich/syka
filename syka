@@ -1,7 +1,6 @@
 -- ============================================================
--- DA HOOD — Lock Menu v2
+-- DA HOOD — Lock Menu v3
 -- RightShift = menu | E (hold) = lock | End = unload
--- Выбор конкретного игрока + показ его позиции
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -25,10 +24,10 @@ local C = {
     ignoreDead    = true,
     showHighlight = true,
     showDot       = true,
-    showArrow     = true,       -- стрелка на экране к цели
-    showDistance  = true,       -- дистанция до цели
+    showArrow     = true,
+    showDistance  = true,
     showHud       = true,
-    selectedName  = nil,        -- выбранный игрок
+    selectedName  = nil,
 }
 
 local COL_ACCENT  = Color3.fromRGB(120, 230, 100)
@@ -110,14 +109,13 @@ local function applyHighlight()
 end
 
 -- ============================================================
--- HUD (status + dot + arrow + distance)
+-- HUD
 -- ============================================================
 local hud = Instance.new("ScreenGui")
 hud.Name = "DaHoodHUD"; hud.ResetOnSpawn = false
 hud.IgnoreGuiInset = true; hud.DisplayOrder = 998
 hud.Parent = plr:WaitForChild("PlayerGui")
 
--- status bar снизу
 local statusFrame = Instance.new("Frame", hud)
 statusFrame.Size = UDim2.new(0, 260, 0, 36)
 statusFrame.Position = UDim2.new(0.5, -130, 1, -150)
@@ -141,7 +139,6 @@ statusLbl.TextColor3 = Color3.fromRGB(180, 180, 190)
 statusLbl.TextSize = 13
 statusLbl.TextXAlignment = Enum.TextXAlignment.Left
 
--- dot над целью (прямо на экране)
 local dot = Instance.new("Frame", hud)
 dot.Size = UDim2.new(0, 10, 0, 10)
 dot.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -151,7 +148,6 @@ dot.BorderSizePixel = 0
 dot.Visible = false
 Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
 
--- outer ring
 local dotRing = Instance.new("Frame", dot)
 dotRing.Size = UDim2.new(2, 0, 2, 0)
 dotRing.Position = UDim2.new(-0.5, 0, -0.5, 0)
@@ -163,7 +159,6 @@ dotRingStroke.Color = COL_ACCENT
 dotRingStroke.Thickness = 1.5
 dotRingStroke.Transparency = 0.4
 
--- стрелка к цели (если цель за экраном)
 local arrow = Instance.new("TextLabel", hud)
 arrow.Size = UDim2.new(0, 40, 0, 40)
 arrow.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -174,7 +169,6 @@ arrow.TextColor3 = COL_ACCENT
 arrow.TextSize = 32
 arrow.Visible = false
 
--- дистанция до цели
 local distLbl = Instance.new("TextLabel", hud)
 distLbl.Size = UDim2.new(0, 200, 0, 18)
 distLbl.Position = UDim2.new(0.5, -100, 0, 30)
@@ -471,9 +465,7 @@ local function makeButton(label, callback, color)
     return btn
 end
 
--- ============================================================
--- SETTINGS UI
--- ============================================================
+-- SETTINGS
 makeLabel("ПОВЕДЕНИЕ")
 makeToggle("Team check", "teamCheck")
 makeToggle("Ignore dead", "ignoreDead")
@@ -563,9 +555,7 @@ makeButton("Unload", function()
     clearHighlight()
 end, COL_DANGER)
 
--- ============================================================
 -- PLAYER LIST
--- ============================================================
 local listRows = {}
 
 local function buildRow(p)
@@ -665,7 +655,6 @@ Players.PlayerRemoving:Connect(function(p)
     refreshList()
 end)
 
--- HP update every 0.5s
 task.spawn(function()
     while hud.Parent do
         task.wait(0.5)
@@ -708,7 +697,6 @@ RS.RenderStepped:Connect(function(dt)
         return
     end
 
-    -- найти цель
     if not targetPart or not targetPart.Parent or not targetPlr or not targetPlr.Character then
         targetPart = findTarget()
         if targetPart then
@@ -727,7 +715,6 @@ RS.RenderStepped:Connect(function(dt)
         end
     end
 
-    -- HUD
     if C.showHud then
         statusLbl.Text = "LOCK ON  •  " .. (targetPlr and targetPlr.Name or "?")
         statusLbl.TextColor3 = COL_ACCENT
@@ -738,12 +725,10 @@ RS.RenderStepped:Connect(function(dt)
     if not targetPart then return end
     if not cam then return end
 
-    -- позиция на экране
     local sp, onScreen = cam:WorldToViewportPoint(targetPart.Position)
     local camPos = cam.CFrame.Position
     local worldDist = (targetPart.Position - camPos).Magnitude
 
-    -- dot
     if C.showDot and onScreen then
         dot.Visible = true
         dot.Position = UDim2.new(0, sp.X, 0, sp.Y)
@@ -751,27 +736,21 @@ RS.RenderStepped:Connect(function(dt)
         dot.Visible = false
     end
 
-    -- distance
     if C.showDistance and C.showHud then
         distLbl.Text = string.format("%d studs", math.floor(worldDist))
     else
         distLbl.Text = ""
     end
 
-    -- arrow (когда цель за экраном)
     if C.showArrow and not onScreen then
         arrow.Visible = true
         local viewportSize = cam.ViewportSize
         local screenCenter = Vector2.new(viewportSize.X / 2, viewportSize.Y / 2)
         local dir = Vector2.new(sp.X - screenCenter.X, sp.Y - screenCenter.Y)
-        if dir.Magnitude < 0.01 then
-            dir = Vector2.new(0, 1)
-        end
+        if dir.Magnitude < 0.01 then dir = Vector2.new(0, 1) end
         dir = dir.Unit
-        -- угол поворота
         local angle = math.deg(math.atan2(dir.Y, dir.X))
         arrow.Rotation = angle + 90
-        -- позиция по краю экрана (радиус от центра)
         local radius = math.min(viewportSize.X, viewportSize.Y) * 0.35
         local arrowPos = screenCenter + dir * radius
         arrow.Position = UDim2.new(0, arrowPos.X, 0, arrowPos.Y)
@@ -779,7 +758,6 @@ RS.RenderStepped:Connect(function(dt)
         arrow.Visible = false
     end
 
-    -- камера
     local desired = CFrame.lookAt(camPos, targetPart.Position)
     local a = math.clamp(dt * 60 * (1 / math.max(C.smooth, 0.01)), 0, 1)
     cam.CFrame = cam.CFrame:Lerp(desired, a)
@@ -831,13 +809,13 @@ end
 
 local function closeMenu()
     menuOpen = false
-    Tween:Create(menu, TweenInfo.new(0.18, Enum.EaseStyle.Quad, Enum.EasingDirection.In), {
+    glow.Visible = false
+    Tween:Create(menu, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
         Size = UDim2.new(0, MW, 0, 0),
     }):Play()
     task.delay(0.18, function()
         if not menuOpen then
             menu.Visible = false
-            glow.Visible = false
         end
     end)
     UIS.MouseBehavior = Enum.MouseBehavior.LockCenter
@@ -877,7 +855,6 @@ do
     end)
 end
 
--- открытие меню
 UIS.InputBegan:Connect(function(i, gp)
     if gp then return end
     if i.KeyCode == Enum.KeyCode.RightShift then
@@ -889,4 +866,4 @@ UIS.InputBegan:Connect(function(i, gp)
     end
 end)
 
-print("[DA HOOD LOCK v2] loaded — RightShift menu, E lock")
+print("[DA HOOD LOCK v3] loaded")
