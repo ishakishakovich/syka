@@ -1,5 +1,5 @@
 -- ============================================================
--- DA HOOD — Lock Menu v9 (multi-lock + fly + FOV stretch)
+-- DA HOOD — Lock Menu v10 (azraeell splash)
 -- RightShift = menu | E/RMB/Q = lock | V = fly | End = unload
 -- ============================================================
 
@@ -34,9 +34,7 @@ local C = {
     flyVertical   = 30,
     flySmooth     = 10,
 
-    -- FOV / stretch
-    fov           = 70,     -- 70 = normal, 90 = wide, 110+ = stretched feel
-    defaultFov    = 70,
+    fov           = 70,
 }
 
 local COL_ACCENT  = Color3.fromRGB(180, 120, 255)
@@ -55,6 +53,238 @@ local locked = false
 local highlights = {}
 local flyActive = false
 local flyVel = Vector3.zero
+
+-- ============================================================
+-- SPLASH — azraeell (без картинки)
+-- ============================================================
+local splash = Instance.new("ScreenGui")
+splash.Name = "AzraeellSplash"
+splash.ResetOnSpawn = false
+splash.IgnoreGuiInset = true
+splash.DisplayOrder = 99999
+splash.Parent = plr:WaitForChild("PlayerGui")
+
+local sBg = Instance.new("Frame", splash)
+sBg.Size = UDim2.new(1, 0, 1, 0)
+sBg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+sBg.BorderSizePixel = 0
+
+local bgGlow = Instance.new("ImageLabel", sBg)
+bgGlow.Size = UDim2.new(1, 0, 1, 0)
+bgGlow.BackgroundTransparency = 1
+bgGlow.Image = "rbxassetid://5028857472"
+bgGlow.ImageColor3 = Color3.fromRGB(100, 40, 160)
+bgGlow.ImageTransparency = 0.4
+bgGlow.ScaleType = Enum.ScaleType.Stretch
+
+local vignette = Instance.new("ImageLabel", sBg)
+vignette.Size = UDim2.new(1, 0, 1, 0)
+vignette.BackgroundTransparency = 1
+vignette.Image = "rbxassetid://9968344227"
+vignette.ImageColor3 = Color3.fromRGB(8, 4, 16)
+vignette.ImageTransparency = 0.2
+vignette.ScaleType = Enum.ScaleType.Stretch
+
+local aura = Instance.new("ImageLabel", sBg)
+aura.Size = UDim2.new(0, 500, 0, 500)
+aura.AnchorPoint = Vector2.new(0.5, 0.5)
+aura.Position = UDim2.new(0.5, 0, 0.42, 0)
+aura.BackgroundTransparency = 1
+aura.Image = "rbxassetid://4996891970"
+aura.ImageColor3 = Color3.fromRGB(160, 80, 240)
+aura.ImageTransparency = 1
+aura.ScaleType = Enum.ScaleType.Stretch
+
+local auraCore = Instance.new("ImageLabel", sBg)
+auraCore.Size = UDim2.new(0, 260, 0, 260)
+auraCore.AnchorPoint = Vector2.new(0.5, 0.5)
+auraCore.Position = UDim2.new(0.5, 0, 0.42, 0)
+auraCore.BackgroundTransparency = 1
+auraCore.Image = "rbxassetid://4996891970"
+auraCore.ImageColor3 = Color3.fromRGB(220, 160, 255)
+auraCore.ImageTransparency = 1
+auraCore.ScaleType = Enum.ScaleType.Stretch
+
+local lineL = Instance.new("Frame", sBg)
+lineL.Size = UDim2.new(0, 2, 0, 0)
+lineL.AnchorPoint = Vector2.new(1, 0.5)
+lineL.Position = UDim2.new(0.5, -220, 0.42, 0)
+lineL.BackgroundColor3 = Color3.fromRGB(180, 120, 255)
+lineL.BackgroundTransparency = 1
+lineL.BorderSizePixel = 0
+
+local lineR = Instance.new("Frame", sBg)
+lineR.Size = UDim2.new(0, 2, 0, 0)
+lineR.AnchorPoint = Vector2.new(0, 0.5)
+lineR.Position = UDim2.new(0.5, 220, 0.42, 0)
+lineR.BackgroundColor3 = Color3.fromRGB(180, 120, 255)
+lineR.BackgroundTransparency = 1
+lineR.BorderSizePixel = 0
+
+local lineT = Instance.new("Frame", sBg)
+lineT.Size = UDim2.new(0, 0, 0, 1)
+lineT.AnchorPoint = Vector2.new(0.5, 0.5)
+lineT.Position = UDim2.new(0.5, 0, 0.28, 0)
+lineT.BackgroundColor3 = Color3.fromRGB(180, 120, 255)
+lineT.BackgroundTransparency = 1
+lineT.BorderSizePixel = 0
+
+local lineB = Instance.new("Frame", sBg)
+lineB.Size = UDim2.new(0, 0, 0, 1)
+lineB.AnchorPoint = Vector2.new(0.5, 0.5)
+lineB.Position = UDim2.new(0.5, 0, 0.58, 0)
+lineB.BackgroundColor3 = Color3.fromRGB(180, 120, 255)
+lineB.BackgroundTransparency = 1
+lineB.BorderSizePixel = 0
+
+local splashTitle = Instance.new("TextLabel", sBg)
+splashTitle.Size = UDim2.new(1, 0, 0, 70)
+splashTitle.Position = UDim2.new(0, 0, 0.62, 0)
+splashTitle.BackgroundTransparency = 1
+splashTitle.Font = Enum.Font.GothamBlack
+splashTitle.Text = "azraeell"
+splashTitle.TextColor3 = Color3.fromRGB(220, 180, 255)
+splashTitle.TextSize = 64
+splashTitle.TextTransparency = 1
+splashTitle.TextStrokeTransparency = 1
+splashTitle.TextStrokeColor3 = Color3.fromRGB(80, 40, 140)
+
+local splashSub = Instance.new("TextLabel", sBg)
+splashSub.Size = UDim2.new(1, 0, 0, 24)
+splashSub.Position = UDim2.new(0, 0, 0.62, 70)
+splashSub.BackgroundTransparency = 1
+splashSub.Font = Enum.Font.GothamBold
+splashSub.Text = "• l o a d i n g •"
+splashSub.TextColor3 = Color3.fromRGB(140, 100, 200)
+splashSub.TextSize = 13
+splashSub.TextTransparency = 1
+
+local barBg = Instance.new("Frame", sBg)
+barBg.Size = UDim2.new(0, 300, 0, 3)
+barBg.AnchorPoint = Vector2.new(0.5, 0.5)
+barBg.Position = UDim2.new(0.5, 0, 0.75, 0)
+barBg.BackgroundColor3 = Color3.fromRGB(30, 20, 45)
+barBg.BorderSizePixel = 0
+Instance.new("UICorner", barBg).CornerRadius = UDim.new(1, 0)
+
+local barFill = Instance.new("Frame", barBg)
+barFill.Size = UDim2.new(0, 0, 1, 0)
+barFill.BackgroundColor3 = Color3.fromRGB(180, 120, 255)
+barFill.BorderSizePixel = 0
+Instance.new("UICorner", barFill).CornerRadius = UDim.new(1, 0)
+
+local barGlowStroke = Instance.new("UIStroke", barFill)
+barGlowStroke.Color = Color3.fromRGB(220, 160, 255)
+barGlowStroke.Thickness = 2
+barGlowStroke.Transparency = 0.5
+
+local verLbl = Instance.new("TextLabel", sBg)
+verLbl.Size = UDim2.new(1, 0, 0, 16)
+verLbl.Position = UDim2.new(0, 0, 0.78, 8)
+verLbl.BackgroundTransparency = 1
+verLbl.Font = Enum.Font.Gotham
+verLbl.Text = "v10"
+verLbl.TextColor3 = Color3.fromRGB(100, 70, 140)
+verLbl.TextSize = 10
+verLbl.TextTransparency = 1
+
+-- анимации splash
+Tween:Create(bgGlow, TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+    ImageTransparency = 0.2,
+}):Play()
+
+aura.Size = UDim2.new(0, 200, 0, 200)
+Tween:Create(aura, TweenInfo.new(1.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+    ImageTransparency = 0.3,
+    Size = UDim2.new(0, 500, 0, 500),
+}):Play()
+
+auraCore.Size = UDim2.new(0, 80, 0, 80)
+Tween:Create(auraCore, TweenInfo.new(1.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+    ImageTransparency = 0.4,
+    Size = UDim2.new(0, 260, 0, 260),
+}):Play()
+
+task.delay(0.3, function()
+    Tween:Create(lineT, TweenInfo.new(0.7, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+        BackgroundTransparency = 0.3,
+        Size = UDim2.new(0, 260, 0, 1),
+    }):Play()
+    Tween:Create(lineB, TweenInfo.new(0.7, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+        BackgroundTransparency = 0.3,
+        Size = UDim2.new(0, 260, 0, 1),
+    }):Play()
+end)
+
+task.delay(0.6, function()
+    Tween:Create(lineL, TweenInfo.new(0.8, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+        BackgroundTransparency = 0.5,
+        Size = UDim2.new(0, 2, 0, 120),
+    }):Play()
+    Tween:Create(lineR, TweenInfo.new(0.8, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+        BackgroundTransparency = 0.5,
+        Size = UDim2.new(0, 2, 0, 120),
+    }):Play()
+end)
+
+task.delay(0.8, function()
+    Tween:Create(splashTitle, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        TextTransparency = 0,
+        TextStrokeTransparency = 0.4,
+    }):Play()
+    Tween:Create(splashSub, TweenInfo.new(0.8), {
+        TextTransparency = 0.2,
+    }):Play()
+end)
+
+task.delay(0.5, function()
+    Tween:Create(barFill, TweenInfo.new(2.0, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
+        Size = UDim2.new(1, 0, 1, 0),
+    }):Play()
+end)
+
+task.delay(1.0, function()
+    Tween:Create(verLbl, TweenInfo.new(0.6), {
+        TextTransparency = 0.4,
+    }):Play()
+end)
+
+task.spawn(function()
+    while splash and splash.Parent do
+        task.wait(1.5)
+        if not splash or not splash.Parent then break end
+        Tween:Create(auraCore, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+            ImageTransparency = 0.6,
+        }):Play()
+        task.wait(1)
+        if not splash or not splash.Parent then break end
+        Tween:Create(auraCore, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+            ImageTransparency = 0.4,
+        }):Play()
+    end
+end)
+
+task.delay(3.5, function()
+    local tw = TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+    Tween:Create(sBg, tw, { BackgroundTransparency = 1 }):Play()
+    Tween:Create(bgGlow, tw, { ImageTransparency = 1 }):Play()
+    Tween:Create(vignette, tw, { ImageTransparency = 1 }):Play()
+    Tween:Create(aura, tw, { ImageTransparency = 1 }):Play()
+    Tween:Create(auraCore, tw, { ImageTransparency = 1 }):Play()
+    Tween:Create(lineL, tw, { BackgroundTransparency = 1 }):Play()
+    Tween:Create(lineR, tw, { BackgroundTransparency = 1 }):Play()
+    Tween:Create(lineT, tw, { BackgroundTransparency = 1 }):Play()
+    Tween:Create(lineB, tw, { BackgroundTransparency = 1 }):Play()
+    Tween:Create(splashTitle, tw, { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+    Tween:Create(splashSub, tw, { TextTransparency = 1 }):Play()
+    Tween:Create(barBg, tw, { BackgroundTransparency = 1 }):Play()
+    Tween:Create(barFill, tw, { BackgroundTransparency = 1 }):Play()
+    Tween:Create(barGlowStroke, tw, { Transparency = 1 }):Play()
+    Tween:Create(verLbl, tw, { TextTransparency = 1 }):Play()
+    task.delay(1, function()
+        if splash then splash:Destroy() end
+    end)
+end)
 
 -- ============================================================
 -- HELPERS
@@ -336,7 +566,7 @@ title.Size = UDim2.new(1, -60, 0, 30)
 title.Position = UDim2.new(0, 16, 0, 8)
 title.BackgroundTransparency = 1
 title.Font = Enum.Font.GothamBlack
-title.Text = "DA HOOD • LOCK"
+title.Text = "azraeell • LOCK"
 title.TextColor3 = COL_ACCENT
 title.TextSize = 22
 title.TextXAlignment = Enum.TextXAlignment.Left
@@ -558,7 +788,7 @@ local function makeButton(label, callback, color)
     return btn
 end
 
--- ============ FOV / STRETCH ============
+-- FOV
 makeLabel("FOV (STRETCH FEEL)")
 makeSlider("FOV", "fov", 60, 120, "", function(v)
     if cam then cam.FieldOfView = v end
@@ -596,6 +826,7 @@ makeFovBtn("NORMAL", 70, 0, 78)
 makeFovBtn("WIDE", 90, 82, 78)
 makeFovBtn("STRETCH", 110, 164, 78)
 
+-- LOCK BUTTON
 makeLabel("LOCK BUTTON")
 local keyRow = Instance.new("Frame", rightScroll)
 keyRow.Size = UDim2.new(1, 0, 0, 30)
@@ -848,9 +1079,7 @@ task.spawn(function()
     end
 end)
 
--- ============================================================
 -- FLY toggle
--- ============================================================
 UIS.InputBegan:Connect(function(input, gp)
     if gp then return end
     if input.KeyCode == C.flyKey then
@@ -870,7 +1099,6 @@ end)
 RS.RenderStepped:Connect(function(dt)
     if not C.enabled then return end
 
-    -- FOV: держим постоянным
     if cam and cam.FieldOfView ~= C.fov then
         cam.FieldOfView = C.fov
     end
@@ -879,7 +1107,6 @@ RS.RenderStepped:Connect(function(dt)
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChildOfClass("Humanoid")
 
-    -- FLY
     if flyActive and hrp and hum and hum.Health > 0 then
         local target = getFlyTarget()
         flyVel = flyVel:Lerp(target, math.min(dt * C.flySmooth, 1))
@@ -889,7 +1116,6 @@ RS.RenderStepped:Connect(function(dt)
         end
     end
 
-    -- LOCK
     if C.mode == "hold" then
         locked = isLockKeyDown()
     end
@@ -979,9 +1205,7 @@ RS.RenderStepped:Connect(function(dt)
     cam.CFrame = cam.CFrame:Lerp(desired, a)
 end)
 
--- ============================================================
--- INPUT (toggle lock)
--- ============================================================
+-- toggle lock
 UIS.InputBegan:Connect(function(input, gp)
     if gp then return end
     if C.mode ~= "toggle" then return end
@@ -998,9 +1222,7 @@ plr.CharacterAdded:Connect(function()
     flyFrame.Visible = false
 end)
 
--- ============================================================
 -- MENU OPEN / CLOSE
--- ============================================================
 local menuOpen = false
 
 local function openMenu()
@@ -1071,4 +1293,4 @@ UIS.InputBegan:Connect(function(i, gp)
     end
 end)
 
-print("[DA HOOD v9] loaded — multi-lock + fly + FOV stretch")
+print("[azraeell] v10 loaded")
