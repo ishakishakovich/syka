@@ -1,6 +1,6 @@
 -- ============================================================
--- DA HOOD — Lock Menu v6 (fix target switch)
--- RightShift = menu | E/RMB/Q (hold) = lock | End = unload
+-- DA HOOD — Lock Menu v9 (multi-lock + fly + FOV stretch)
+-- RightShift = menu | E/RMB/Q = lock | V = fly | End = unload
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -26,8 +26,17 @@ local C = {
     showArrow     = true,
     showDistance  = true,
     showHud       = true,
-    selectedName  = nil,
+    selectedNames = {},
     lockButton    = "E",
+
+    flyKey        = Enum.KeyCode.V,
+    flySpeed      = 40,
+    flyVertical   = 30,
+    flySmooth     = 10,
+
+    -- FOV / stretch
+    fov           = 70,     -- 70 = normal, 90 = wide, 110+ = stretched feel
+    defaultFov    = 70,
 }
 
 local COL_ACCENT  = Color3.fromRGB(180, 120, 255)
@@ -43,15 +52,13 @@ local COL_BTN     = Color3.fromRGB(30, 20, 40)
 -- STATE
 -- ============================================================
 local locked = false
-local targetPart = nil
-local targetPlr = nil
-local highlight = nil
+local highlights = {}
+local flyActive = false
+local flyVel = Vector3.zero
 
 -- ============================================================
 -- HELPERS
 -- ============================================================
-local function getChar() return plr.Character end
-
 local function getTargetPart(char)
     if not char then return nil end
     return char:FindFirstChild(C.targetPart)
@@ -73,55 +80,104 @@ local function valid(p)
     return true
 end
 
-local function getSelectedPlayer()
-    if not C.selectedName then return nil end
-    return Players:FindFirstChild(C.selectedName)
-end
-
-local function findTarget()
-    local p = getSelectedPlayer()
-    if p and valid(p) then
-        local part = getTargetPart(p.Character)
-        if part then
-            targetPlr = p
-            return part
-        end
-    end
-    targetPlr = nil
-    return nil
-end
-
 local function isLockKeyDown()
-    if C.lockButton == "E" then
-        return UIS:IsKeyDown(Enum.KeyCode.E)
-    elseif C.lockButton == "RMB" then
-        return UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
-    elseif C.lockButton == "Q" then
-        return UIS:IsKeyDown(Enum.KeyCode.Q)
-    end
+    if C.lockButton == "E" then return UIS:IsKeyDown(Enum.KeyCode.E)
+    elseif C.lockButton == "RMB" then return UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+    elseif C.lockButton == "Q" then return UIS:IsKeyDown(Enum.KeyCode.Q) end
     return false
 end
 
-local function clearHighlight()
-    if highlight then
-        pcall(function() highlight:Destroy() end)
-        highlight = nil
+local function countSelected()
+    local n = 0
+    for _ in pairs(C.selectedNames) do n = n + 1 end
+    return n
+end
+
+local function findNearestTarget()
+    local camPos = cam.CFrame.Position
+    local bestPart, bestPlr, bestDist = nil, nil, math.huge
+    for name, _ in pairs(C.selectedNames) do
+        local p = Players:FindFirstChild(name)
+        if p and valid(p) then
+            local part = getTargetPart(p.Character)
+            if part then
+                local d = (part.Position - camPos).Magnitude
+                if d < bestDist then
+                    bestDist = d
+                    bestPart = part
+                    bestPlr = p
+                end
+            end
+        end
+    end
+    return bestPart, bestPlr, bestDist
+end
+
+-- ============================================================
+-- FLY
+-- ============================================================
+local function getFlyTarget()
+    local camCF = cam.CFrame
+    local move = Vector3.zero
+    local fwd = camCF.LookVector
+    local right = camCF.RightVector
+
+    if UIS:IsKeyDown(Enum.KeyCode.W) then move = move + fwd end
+    if UIS:IsKeyDown(Enum.KeyCode.S) then move = move - fwd end
+    if UIS:IsKeyDown(Enum.KeyCode.A) then move = move - right end
+    if UIS:IsKeyDown(Enum.KeyCode.D) then move = move + right end
+    if UIS:IsKeyDown(Enum.KeyCode.Space) then
+        move = move + Vector3.new(0, 1, 0) * (C.flyVertical / C.flySpeed)
+    end
+    if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then
+        move = move - Vector3.new(0, 1, 0) * (C.flyVertical / C.flySpeed)
+    end
+
+    if move.Magnitude > 0 then
+        move = move.Unit * C.flySpeed
+    end
+    return move
+end
+
+-- ============================================================
+-- HIGHLIGHTS
+-- ============================================================
+local function updateHighlights()
+    for name, h in pairs(highlights) do
+        local p = Players:FindFirstChild(name)
+        local shouldRemove = true
+        if p and C.selectedNames[name] and valid(p) and p.Character then
+            if h.Parent == p.Character then
+                shouldRemove = false
+            end
+        end
+        if shouldRemove then
+            pcall(function() h:Destroy() end)
+            highlights[name] = nil
+        end
+    end
+    if not C.showHighlight then return end
+    for name, _ in pairs(C.selectedNames) do
+        local p = Players:FindFirstChild(name)
+        if p and valid(p) and p.Character and not highlights[name] then
+            local h = Instance.new("Highlight")
+            h.Adornee = p.Character
+            h.FillColor = COL_ACCENT
+            h.OutlineColor = COL_ACCENT
+            h.FillTransparency = 0.7
+            h.OutlineTransparency = 0
+            h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            h.Parent = p.Character
+            highlights[name] = h
+        end
     end
 end
 
-local function applyHighlight()
-    clearHighlight()
-    if not C.showHighlight then return end
-    if not targetPlr or not targetPlr.Character then return end
-    local h = Instance.new("Highlight")
-    h.Adornee = targetPlr.Character
-    h.FillColor = COL_ACCENT
-    h.OutlineColor = COL_ACCENT
-    h.FillTransparency = 0.7
-    h.OutlineTransparency = 0
-    h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    h.Parent = targetPlr.Character
-    highlight = h
+local function clearAllHighlights()
+    for name, h in pairs(highlights) do
+        pcall(function() h:Destroy() end)
+        highlights[name] = nil
+    end
 end
 
 -- ============================================================
@@ -133,8 +189,8 @@ hud.IgnoreGuiInset = true; hud.DisplayOrder = 998
 hud.Parent = plr:WaitForChild("PlayerGui")
 
 local statusFrame = Instance.new("Frame", hud)
-statusFrame.Size = UDim2.new(0, 260, 0, 36)
-statusFrame.Position = UDim2.new(0.5, -130, 1, -150)
+statusFrame.Size = UDim2.new(0, 280, 0, 36)
+statusFrame.Position = UDim2.new(0.5, -140, 1, -150)
 statusFrame.BackgroundColor3 = COL_BG
 statusFrame.BackgroundTransparency = 0.3
 statusFrame.BorderSizePixel = 0
@@ -154,6 +210,28 @@ statusLbl.Text = "LOCK OFF"
 statusLbl.TextColor3 = Color3.fromRGB(180, 180, 190)
 statusLbl.TextSize = 13
 statusLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+local flyFrame = Instance.new("Frame", hud)
+flyFrame.Size = UDim2.new(0, 100, 0, 28)
+flyFrame.Position = UDim2.new(0.5, -50, 1, -190)
+flyFrame.BackgroundColor3 = Color3.fromRGB(14, 10, 20)
+flyFrame.BackgroundTransparency = 0.3
+flyFrame.BorderSizePixel = 0
+flyFrame.Visible = false
+Instance.new("UICorner", flyFrame).CornerRadius = UDim.new(0, 6)
+
+local flyStroke = Instance.new("UIStroke", flyFrame)
+flyStroke.Color = COL_ACCENT
+flyStroke.Thickness = 1.5
+flyStroke.Transparency = 0.3
+
+local flyLbl = Instance.new("TextLabel", flyFrame)
+flyLbl.Size = UDim2.new(1, 0, 1, 0)
+flyLbl.BackgroundTransparency = 1
+flyLbl.Font = Enum.Font.GothamBlack
+flyLbl.Text = "✈ FLY"
+flyLbl.TextColor3 = COL_ACCENT
+flyLbl.TextSize = 14
 
 local dot = Instance.new("Frame", hud)
 dot.Size = UDim2.new(0, 10, 0, 10)
@@ -218,7 +296,7 @@ local function pad(p, n)
     u.Parent = p; return u
 end
 
-local MW, MH = 640, 480
+local MW, MH = 640, 520
 
 local glow = Instance.new("Frame", gui)
 glow.Size = UDim2.new(0, MW+20, 0, MH+20)
@@ -268,7 +346,7 @@ subtitle.Size = UDim2.new(1, -60, 0, 14)
 subtitle.Position = UDim2.new(0, 16, 0, 36)
 subtitle.BackgroundTransparency = 1
 subtitle.Font = Enum.Font.Gotham
-subtitle.Text = "RightShift = menu  •  End = unload"
+subtitle.Text = "RightShift = menu  •  V = fly  •  End = unload"
 subtitle.TextColor3 = COL_ACCENT2
 subtitle.TextSize = 10
 subtitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -297,7 +375,7 @@ local listTitle = Instance.new("TextLabel", leftPanel)
 listTitle.Size = UDim2.new(1, 0, 0, 20)
 listTitle.BackgroundTransparency = 1
 listTitle.Font = Enum.Font.GothamBold
-listTitle.Text = "ВЫБЕРИ ИГРОКА"
+listTitle.Text = "ВЫБЕРИ ИГРОКОВ"
 listTitle.TextColor3 = COL_ACCENT2
 listTitle.TextSize = 11
 listTitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -387,7 +465,7 @@ local function makeToggle(label, key, onChange)
     return row
 end
 
-local function makeSlider(label, key, min, max, suffix)
+local function makeSlider(label, key, min, max, suffix, onChange)
     local row = Instance.new("Frame", rightScroll)
     row.Size = UDim2.new(1, 0, 0, 44)
     row.BackgroundTransparency = 1
@@ -435,6 +513,7 @@ local function makeSlider(label, key, min, max, suffix)
         C[key] = v
         val.Text = tostring(v) .. (suffix or "")
         Tween:Create(fill, TweenInfo.new(0.08), {Size = UDim2.new(rel, 0, 1, 0)}):Play()
+        if onChange then pcall(onChange, v) end
     end
     btn.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -479,7 +558,44 @@ local function makeButton(label, callback, color)
     return btn
 end
 
--- LOCK BUTTON
+-- ============ FOV / STRETCH ============
+makeLabel("FOV (STRETCH FEEL)")
+makeSlider("FOV", "fov", 60, 120, "", function(v)
+    if cam then cam.FieldOfView = v end
+end)
+
+local fovRow = Instance.new("Frame", rightScroll)
+fovRow.Size = UDim2.new(1, 0, 0, 30)
+fovRow.BackgroundTransparency = 1
+local fovBtns = {}
+
+local function makeFovBtn(text, val, xPos, w)
+    local b = Instance.new("TextButton", fovRow)
+    b.Size = UDim2.new(0, w, 1, 0)
+    b.Position = UDim2.new(0, xPos, 0, 0)
+    b.BackgroundColor3 = (C.fov == val) and COL_ACCENT or COL_BTN
+    b.BorderSizePixel = 0
+    b.Font = Enum.Font.GothamBold
+    b.Text = text
+    b.TextColor3 = (C.fov == val) and Color3.fromRGB(14, 10, 20) or Color3.fromRGB(230, 240, 230)
+    b.TextSize = 11
+    b.AutoButtonColor = false
+    corner(b, 5)
+    b.MouseButton1Click:Connect(function()
+        C.fov = val
+        if cam then cam.FieldOfView = val end
+        for _, c in ipairs(fovBtns) do
+            local active = (c.val == val)
+            c.btn.BackgroundColor3 = active and COL_ACCENT or COL_BTN
+            c.btn.TextColor3 = active and Color3.fromRGB(14, 10, 20) or Color3.fromRGB(230, 240, 230)
+        end
+    end)
+    table.insert(fovBtns, {btn = b, val = val})
+end
+makeFovBtn("NORMAL", 70, 0, 78)
+makeFovBtn("WIDE", 90, 82, 78)
+makeFovBtn("STRETCH", 110, 164, 78)
+
 makeLabel("LOCK BUTTON")
 local keyRow = Instance.new("Frame", rightScroll)
 keyRow.Size = UDim2.new(1, 0, 0, 30)
@@ -508,10 +624,15 @@ local function makeKeyBtn(text, val, xPos, w)
     end)
     table.insert(keyBtns, {btn = b, val = val})
 end
-
 makeKeyBtn("E", "E", 0, 78)
 makeKeyBtn("RMB", "RMB", 82, 78)
 makeKeyBtn("Q", "Q", 164, 78)
+
+-- FLY
+makeLabel("FLY (V)")
+makeSlider("Fly speed", "flySpeed", 15, 150, "")
+makeSlider("Fly vertical", "flyVertical", 10, 100, "")
+makeSlider("Fly smooth", "flySmooth", 2, 30, "")
 
 -- ПОВЕДЕНИЕ
 makeLabel("ПОВЕДЕНИЕ")
@@ -520,16 +641,16 @@ makeToggle("Ignore dead", "ignoreDead")
 
 -- ВИД
 makeLabel("ВИД ЦЕЛИ")
-makeToggle("Highlight (обводка)", "showHighlight", function(v)
-    if not v then clearHighlight() end
+makeToggle("Highlight", "showHighlight", function(v)
+    if not v then clearAllHighlights() end
 end)
-makeToggle("Dot (точка над головой)", "showDot")
-makeToggle("Arrow (стрелка к цели)", "showArrow")
-makeToggle("Distance (дистанция)", "showDistance")
+makeToggle("Dot", "showDot")
+makeToggle("Arrow", "showArrow")
+makeToggle("Distance", "showDistance")
 
 -- ТЕХНИКА
 makeLabel("ТЕХНИКА")
-makeSlider("Smooth", "smooth", 0.05, 1, "")
+makeSlider("Lock smooth", "smooth", 0.05, 1, "")
 
 -- КУДА
 makeLabel("КУДА ЛОЧИТЬ")
@@ -551,6 +672,7 @@ local function makePartBtn(text, val, xPos, w)
     corner(b, 5)
     b.MouseButton1Click:Connect(function()
         C.targetPart = val
+        clearAllHighlights()
         for _, c in ipairs(partBtns) do
             local active = (c.val == val)
             c.btn.BackgroundColor3 = active and COL_ACCENT or COL_BTN
@@ -564,7 +686,7 @@ makePartBtn("CHEST", "UpperTorso", 82, 78)
 makePartBtn("ROOT", "HumanoidRootPart", 164, 78)
 
 -- РЕЖИМ
-makeLabel("РЕЖИМ")
+makeLabel("РЕЖИМ LOCK")
 local modeRow = Instance.new("Frame", rightScroll)
 modeRow.Size = UDim2.new(1, 0, 0, 30)
 modeRow.BackgroundTransparency = 1
@@ -604,7 +726,7 @@ btnToggle.MouseButton1Click:Connect(function() C.mode = "toggle"; updateModeBtns
 makeButton("Unload", function()
     pcall(function() gui:Destroy() end)
     pcall(function() hud:Destroy() end)
-    clearHighlight()
+    clearAllHighlights()
 end, COL_DANGER)
 
 -- ============================================================
@@ -669,21 +791,15 @@ local function buildRow(p)
     end
 
     row.MouseButton1Click:Connect(function()
-        C.selectedName = p.Name
-        targetPart = nil
-        targetPlr = nil
-        clearHighlight()
-        for n, r in pairs(listRows) do
-            r.setActive(n == p.Name)
+        if C.selectedNames[p.Name] then
+            C.selectedNames[p.Name] = nil
+        else
+            C.selectedNames[p.Name] = true
         end
+        setActive(C.selectedNames[p.Name] and true or false)
     end)
 
-    listRows[p.Name] = {
-        btn = row,
-        setActive = setActive,
-        info = info,
-        player = p,
-    }
+    listRows[p.Name] = { btn = row, setActive = setActive, info = info, player = p }
 end
 
 local function refreshList()
@@ -692,25 +808,17 @@ local function refreshList()
         listRows[n] = nil
     end
     for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= plr then
-            buildRow(p)
-        end
+        if p ~= plr then buildRow(p) end
     end
-    if C.selectedName and listRows[C.selectedName] then
-        listRows[C.selectedName].setActive(true)
+    for n, r in pairs(listRows) do
+        if C.selectedNames[n] then r.setActive(true) end
     end
 end
 
 refreshList()
 Players.PlayerAdded:Connect(function() task.wait(0.5); refreshList() end)
 Players.PlayerRemoving:Connect(function(p)
-    if C.selectedName == p.Name then
-        C.selectedName = nil
-        locked = false
-        targetPart = nil
-        targetPlr = nil
-        clearHighlight()
-    end
+    C.selectedNames[p.Name] = nil
     task.wait(0.3)
     refreshList()
 end)
@@ -724,15 +832,34 @@ task.spawn(function()
                 local h = p.Character:FindFirstChildOfClass("Humanoid")
                 if h then
                     r.info.Text = string.format("HP: %d", math.floor(h.Health))
-                    if h.Health <= 0 then
-                        r.info.TextColor3 = COL_DANGER
-                    else
-                        r.info.TextColor3 = COL_ACCENT2
-                    end
+                    r.info.TextColor3 = (h.Health <= 0) and COL_DANGER or COL_ACCENT2
                 end
             else
                 r.info.Text = "HP: —"
             end
+        end
+    end
+end)
+
+task.spawn(function()
+    while hud.Parent do
+        updateHighlights()
+        task.wait(0.2)
+    end
+end)
+
+-- ============================================================
+-- FLY toggle
+-- ============================================================
+UIS.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == C.flyKey then
+        flyActive = not flyActive
+        if flyActive then
+            flyFrame.Visible = true
+        else
+            flyFrame.Visible = false
+            flyVel = Vector3.zero
         end
     end
 end)
@@ -743,13 +870,35 @@ end)
 RS.RenderStepped:Connect(function(dt)
     if not C.enabled then return end
 
+    -- FOV: держим постоянным
+    if cam and cam.FieldOfView ~= C.fov then
+        cam.FieldOfView = C.fov
+    end
+
+    local char = plr.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+    -- FLY
+    if flyActive and hrp and hum and hum.Health > 0 then
+        local target = getFlyTarget()
+        flyVel = flyVel:Lerp(target, math.min(dt * C.flySmooth, 1))
+        hrp.AssemblyLinearVelocity = flyVel
+        if hrp.AssemblyLinearVelocity.Magnitude < 0.1 and target.Magnitude < 0.1 then
+            hrp.AssemblyLinearVelocity = Vector3.zero
+        end
+    end
+
+    -- LOCK
     if C.mode == "hold" then
         locked = isLockKeyDown()
     end
 
+    local count = countSelected()
+
     if not locked then
         if C.showHud then
-            statusLbl.Text = C.selectedName and ("TARGET: " .. C.selectedName .. "  (locked off)") or "LOCK OFF  •  no target chosen"
+            statusLbl.Text = (count > 0) and ("TARGETS: " .. count .. "  (locked off)") or "LOCK OFF"
             statusLbl.TextColor3 = Color3.fromRGB(180, 180, 190)
             statusStroke.Color = COL_DANGER
             statusStroke.Transparency = 0.6
@@ -757,57 +906,45 @@ RS.RenderStepped:Connect(function(dt)
         dot.Visible = false
         arrow.Visible = false
         distLbl.Text = ""
-        clearHighlight()
         return
     end
 
-    -- ПРОВЕРКА: цель всё ещё та что выбрана, жива, существует
-    local selected = getSelectedPlayer()
-    local needRefind = false
-
-    if not targetPart or not targetPart.Parent then
-        needRefind = true
-    elseif not targetPlr or targetPlr ~= selected then
-        needRefind = true
-    elseif not targetPlr.Character then
-        needRefind = true
-    elseif not valid(targetPlr) then
-        needRefind = true
+    if count == 0 then
+        if C.showHud then
+            statusLbl.Text = "LOCK ON  •  no targets"
+            statusLbl.TextColor3 = Color3.fromRGB(255, 200, 80)
+            statusStroke.Color = Color3.fromRGB(255, 200, 80)
+        end
+        dot.Visible = false
+        arrow.Visible = false
+        distLbl.Text = ""
+        return
     end
 
-    if needRefind then
-        targetPart = nil
-        targetPlr = nil
-        clearHighlight()
-        targetPart = findTarget()
-        if targetPart then
-            applyHighlight()
-        else
-            if C.showHud then
-                statusLbl.Text = "LOCK ON  •  no target"
-                statusLbl.TextColor3 = Color3.fromRGB(255, 200, 80)
-                statusStroke.Color = Color3.fromRGB(255, 200, 80)
-            end
-            dot.Visible = false
-            arrow.Visible = false
-            distLbl.Text = ""
-            return
+    local part, tplr, dist = findNearestTarget()
+
+    if not part then
+        if C.showHud then
+            statusLbl.Text = "LOCK ON  •  " .. count .. " targets (none alive)"
+            statusLbl.TextColor3 = Color3.fromRGB(255, 200, 80)
+            statusStroke.Color = Color3.fromRGB(255, 200, 80)
         end
+        dot.Visible = false
+        arrow.Visible = false
+        distLbl.Text = ""
+        return
     end
 
     if C.showHud then
-        statusLbl.Text = "LOCK ON  •  " .. (targetPlr and targetPlr.Name or "?")
+        statusLbl.Text = "LOCK ON  •  " .. tplr.Name .. "  (" .. count .. " targets)"
         statusLbl.TextColor3 = COL_ACCENT
         statusStroke.Color = COL_ACCENT
         statusStroke.Transparency = 0.2
     end
 
-    if not targetPart then return end
     if not cam then return end
 
-    local sp, onScreen = cam:WorldToViewportPoint(targetPart.Position)
-    local camPos = cam.CFrame.Position
-    local worldDist = (targetPart.Position - camPos).Magnitude
+    local sp, onScreen = cam:WorldToViewportPoint(part.Position)
 
     if C.showDot and onScreen then
         dot.Visible = true
@@ -817,49 +954,48 @@ RS.RenderStepped:Connect(function(dt)
     end
 
     if C.showDistance and C.showHud then
-        distLbl.Text = string.format("%d studs", math.floor(worldDist))
+        distLbl.Text = string.format("%d studs", math.floor(dist))
     else
         distLbl.Text = ""
     end
 
     if C.showArrow and not onScreen then
         arrow.Visible = true
-        local viewportSize = cam.ViewportSize
-        local screenCenter = Vector2.new(viewportSize.X / 2, viewportSize.Y / 2)
-        local dir = Vector2.new(sp.X - screenCenter.X, sp.Y - screenCenter.Y)
+        local vp = cam.ViewportSize
+        local sc = Vector2.new(vp.X / 2, vp.Y / 2)
+        local dir = Vector2.new(sp.X - sc.X, sp.Y - sc.Y)
         if dir.Magnitude < 0.01 then dir = Vector2.new(0, 1) end
         dir = dir.Unit
-        local angle = math.deg(math.atan2(dir.Y, dir.X))
-        arrow.Rotation = angle + 90
-        local radius = math.min(viewportSize.X, viewportSize.Y) * 0.35
-        local arrowPos = screenCenter + dir * radius
-        arrow.Position = UDim2.new(0, arrowPos.X, 0, arrowPos.Y)
+        arrow.Rotation = math.deg(math.atan2(dir.Y, dir.X)) + 90
+        local r = math.min(vp.X, vp.Y) * 0.35
+        local ap = sc + dir * r
+        arrow.Position = UDim2.new(0, ap.X, 0, ap.Y)
     else
         arrow.Visible = false
     end
 
-    local desired = CFrame.lookAt(camPos, targetPart.Position)
+    local desired = CFrame.lookAt(cam.CFrame.Position, part.Position)
     local a = math.clamp(dt * 60 * (1 / math.max(C.smooth, 0.01)), 0, 1)
     cam.CFrame = cam.CFrame:Lerp(desired, a)
 end)
 
 -- ============================================================
--- INPUT (toggle режим)
+-- INPUT (toggle lock)
 -- ============================================================
 UIS.InputBegan:Connect(function(input, gp)
     if gp then return end
     if C.mode ~= "toggle" then return end
-
     local hit = false
     if C.lockButton == "E" and input.KeyCode == Enum.KeyCode.E then hit = true end
     if C.lockButton == "Q" and input.KeyCode == Enum.KeyCode.Q then hit = true end
     if C.lockButton == "RMB" and input.UserInputType == Enum.UserInputType.MouseButton2 then hit = true end
+    if hit then locked = not locked end
+end)
 
-    if hit then
-        locked = not locked
-        targetPart = nil
-        targetPlr = nil
-    end
+plr.CharacterAdded:Connect(function()
+    flyActive = false
+    flyVel = Vector3.zero
+    flyFrame.Visible = false
 end)
 
 -- ============================================================
@@ -886,9 +1022,7 @@ local function closeMenu()
         Size = UDim2.new(0, MW, 0, 0),
     }):Play()
     task.delay(0.18, function()
-        if not menuOpen then
-            menu.Visible = false
-        end
+        if not menuOpen then menu.Visible = false end
     end)
     UIS.MouseBehavior = Enum.MouseBehavior.LockCenter
 end
@@ -933,8 +1067,8 @@ UIS.InputBegan:Connect(function(i, gp)
     elseif i.KeyCode == Enum.KeyCode.End then
         pcall(function() gui:Destroy() end)
         pcall(function() hud:Destroy() end)
-        clearHighlight()
+        clearAllHighlights()
     end
 end)
 
-print("[DA HOOD LOCK v6] loaded")
+print("[DA HOOD v9] loaded — multi-lock + fly + FOV stretch")
