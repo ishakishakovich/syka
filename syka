@@ -1,5 +1,5 @@
 -- ============================================================
--- DA HOOD — Lock Menu v5 (purple + single lock button)
+-- DA HOOD — Lock Menu v6 (fix target switch)
 -- RightShift = menu | E/RMB/Q (hold) = lock | End = unload
 -- ============================================================
 
@@ -27,7 +27,7 @@ local C = {
     showDistance  = true,
     showHud       = true,
     selectedName  = nil,
-    lockButton    = "E",   -- "E" / "RMB" / "Q"
+    lockButton    = "E",
 }
 
 local COL_ACCENT  = Color3.fromRGB(180, 120, 255)
@@ -62,6 +62,7 @@ local function getTargetPart(char)
 end
 
 local function valid(p)
+    if not p then return false end
     if p == plr then return false end
     if C.teamCheck and plr.Team and p.Team == plr.Team then return false end
     local c = p.Character
@@ -478,7 +479,7 @@ local function makeButton(label, callback, color)
     return btn
 end
 
--- LOCK BUTTON (одна кнопка)
+-- LOCK BUTTON
 makeLabel("LOCK BUTTON")
 local keyRow = Instance.new("Frame", rightScroll)
 keyRow.Size = UDim2.new(1, 0, 0, 30)
@@ -669,6 +670,9 @@ local function buildRow(p)
 
     row.MouseButton1Click:Connect(function()
         C.selectedName = p.Name
+        targetPart = nil
+        targetPlr = nil
+        clearHighlight()
         for n, r in pairs(listRows) do
             r.setActive(n == p.Name)
         end
@@ -703,6 +707,9 @@ Players.PlayerRemoving:Connect(function(p)
     if C.selectedName == p.Name then
         C.selectedName = nil
         locked = false
+        targetPart = nil
+        targetPlr = nil
+        clearHighlight()
     end
     task.wait(0.3)
     refreshList()
@@ -754,7 +761,24 @@ RS.RenderStepped:Connect(function(dt)
         return
     end
 
-    if not targetPart or not targetPart.Parent or not targetPlr or not targetPlr.Character then
+    -- ПРОВЕРКА: цель всё ещё та что выбрана, жива, существует
+    local selected = getSelectedPlayer()
+    local needRefind = false
+
+    if not targetPart or not targetPart.Parent then
+        needRefind = true
+    elseif not targetPlr or targetPlr ~= selected then
+        needRefind = true
+    elseif not targetPlr.Character then
+        needRefind = true
+    elseif not valid(targetPlr) then
+        needRefind = true
+    end
+
+    if needRefind then
+        targetPart = nil
+        targetPlr = nil
+        clearHighlight()
         targetPart = findTarget()
         if targetPart then
             applyHighlight()
@@ -767,7 +791,6 @@ RS.RenderStepped:Connect(function(dt)
             dot.Visible = false
             arrow.Visible = false
             distLbl.Text = ""
-            clearHighlight()
             return
         end
     end
@@ -821,7 +844,7 @@ RS.RenderStepped:Connect(function(dt)
 end)
 
 -- ============================================================
--- INPUT (для toggle режима)
+-- INPUT (toggle режим)
 -- ============================================================
 UIS.InputBegan:Connect(function(input, gp)
     if gp then return end
@@ -881,7 +904,6 @@ end)
 
 closeBtn.MouseButton1Click:Connect(closeMenu)
 
--- drag
 do
     local dragging, dragStart, startPos
     headerBg.InputBegan:Connect(function(input)
@@ -915,4 +937,4 @@ UIS.InputBegan:Connect(function(i, gp)
     end
 end)
 
-print("[DA HOOD LOCK v5] single button + purple loaded")
+print("[DA HOOD LOCK v6] loaded")
