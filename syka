@@ -1,4 +1,4 @@
--- azraeell — lock + fast reload + fast stop + fly + displayname menu
+-- azraeell v18 — optimized for macro
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
 local RS = game:GetService("RunService")
@@ -29,7 +29,32 @@ local highlights = {}
 local cachedPart, cachedPlr = nil, nil
 local lastRefresh = 0
 local lastReloadCheck = 0
+local lastFastStopWrite = 0
 local flyVel = Vector3.zero
+local heartbeatFrame = 0
+local cachedChar, cachedHrp, cachedHum = nil, nil, nil
+local currentFlyAnimator = nil
+local fastReloadConn = nil
+
+local function getMyChar()
+    local c = plr.Character
+    if c ~= cachedChar then
+        cachedChar = c
+        cachedHrp = c and c:FindFirstChild("HumanoidRootPart")
+        cachedHum = c and c:FindFirstChildOfClass("Humanoid")
+        if c then
+            task.defer(function()
+                if cachedHum then
+                    local animator = cachedHum:FindFirstChildOfClass("Animator")
+                    if animator and not currentFlyAnimator then
+                        currentFlyAnimator = animator
+                    end
+                end
+            end)
+        end
+    end
+    return cachedHrp, cachedHum
+end
 
 local function valid(p)
     if not p or p == plr then return false end
@@ -48,7 +73,6 @@ local function getPart(char)
 end
 
 local function isLockDown()
-    if UIS:GetFocusedTextBox() then return false end
     if C.lockButton == "E" then return UIS:IsKeyDown(Enum.KeyCode.E) end
     if C.lockButton == "Q" then return UIS:IsKeyDown(Enum.KeyCode.Q) end
     if C.lockButton == "RMB" then return UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) end
@@ -97,7 +121,6 @@ local function updateHl()
 end
 
 local function getFlyVec()
-    if UIS:GetFocusedTextBox() then return Vector3.zero end
     local ccf = cam.CFrame
     local move = Vector3.zero
     local fwd = ccf.LookVector
@@ -114,6 +137,25 @@ local function getFlyVec()
     end
     if move.Magnitude > 0 then move = move.Unit * C.flySpeed end
     return move
+end
+
+-- Fast reload — через событие, а не опрос
+local function setupFastReload()
+    if fastReloadConn then fastReloadConn:Disconnect(); fastReloadConn = nil end
+    if not C.fastReload then return end
+    local hum = cachedHum
+    if not hum then return end
+    local animator = hum:FindFirstChildOfClass("Animator")
+    if not animator then return end
+    fastReloadConn = animator.AnimationPlayed:Connect(function(track)
+        if not C.fastReload then return end
+        if track.Animation and track.Animation.Name then
+            local n = track.Animation.Name:lower()
+            if n:find("reload") then
+                pcall(function() track:AdjustSpeed(C.fastReloadSpeed) end)
+            end
+        end
+    end)
 end
 
 -- HUD
@@ -275,6 +317,9 @@ local function makeToggle(label, key)
         if key == "flyEnabled" then
             flyInd.Visible = C.flyEnabled
             if not C.flyEnabled then flyVel = Vector3.zero end
+        end
+        if key == "fastReload" then
+            setupFastReload()
         end
     end)
 end
@@ -454,6 +499,7 @@ local function buildRow(p)
             C.selectedNames[p.Name] = true
         end
         setAct(C.selectedNames[p.Name] and true or false)
+        task.defer(updateHl)
     end)
 
     rows[p.Name] = { btn = r, setAct = setAct, player = p }
@@ -479,16 +525,18 @@ Players.PlayerRemoving:Connect(function(p)
     task.wait(0.2); refresh()
 end)
 
--- DisplayName updater
+-- DisplayName + HP updater раз в 2 сек
 task.spawn(function()
     while gui.Parent do
-        task.wait(5)
+        task.wait(2)
         for n, r in pairs(rows) do
             local p = Players:FindFirstChild(n)
             if p and r.btn.Parent then
                 local lbl = r.btn:FindFirstChildOfClass("TextLabel")
-                if lbl and lbl.Text ~= p.DisplayName then
-                    lbl.Text = p.DisplayName
+                if lbl then
+                    if lbl.Text ~= p.DisplayName then
+                        lbl.Text = p.DisplayName
+                    end
                 end
             end
         end
@@ -530,12 +578,13 @@ end
 
 UIS.InputBegan:Connect(function(i, gp)
     if gp then return end
+    if UIS:GetFocusedTextBox() then return end
 
     if i.KeyCode == Enum.KeyCode.RightShift then
         if menuOpen then closeMenu() else openMenu() end
     end
 
-    if i.KeyCode == C.flyKey and not UIS:GetFocusedTextBox() then
+    if i.KeyCode == C.flyKey then
         C.flyEnabled = not C.flyEnabled
         flyInd.Visible = C.flyEnabled
         if not C.flyEnabled then flyVel = Vector3.zero end
@@ -548,6 +597,11 @@ UIS.InputBegan:Connect(function(i, gp)
     end
 end)
 
+plr.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    setupFastReload()
+end)
+
 RS:BindToRenderStep("AZMouse", Enum.RenderPriority.Camera.Value + 1, function()
     if menuOpen then
         if UIS.MouseBehavior ~= Enum.MouseBehavior.Default then
@@ -557,55 +611,41 @@ RS:BindToRenderStep("AZMouse", Enum.RenderPriority.Camera.Value + 1, function()
     end
 end)
 
+-- MAIN HEARTBEAT — оптимизирован
 RS.Heartbeat:Connect(function(dt)
-    local char = plr.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    local hum = char:FindFirstChildOfClass("Humanoid")
+    heartbeatFrame = heartbeatFrame + 1
+
+    local hrp, hum = getMyChar()
     if not hrp or not hum then return end
 
+    -- no slowdown
     if C.noSlowdownEnabled and hum.Health > 0 and hum.WalkSpeed < C.noSlowdownSpeed then
         hum.WalkSpeed = C.noSlowdownSpeed
     end
 
-    if C.fastStop and hum.Health > 0 then
-        local st = hum:GetState()
-        local onG = st == Enum.HumanoidStateType.Running or st == Enum.HumanoidStateType.Landed
-        if onG and hum.MoveDirection.Magnitude < 0.01 then
+    -- fast stop — проверка раз в 3 кадра + debounce на запись
+    if C.fastStop and hum.Health > 0 and heartbeatFrame % 3 == 0 then
+        if tick() - lastFastStopWrite > 0.1 then
             local v = hrp.AssemblyLinearVelocity
-            if math.abs(v.X) > 2 or math.abs(v.Z) > 2 then
-                hrp.AssemblyLinearVelocity = Vector3.new(0, v.Y, 0)
-            end
-        end
-    end
-
-    if C.fastReload and tick() - lastReloadCheck > 0.2 then
-        lastReloadCheck = tick()
-        local animator = hum:FindFirstChildOfClass("Animator")
-        if animator then
-            local ok, tracks = pcall(function() return animator:GetPlayingAnimationTracks() end)
-            if ok and tracks then
-                for _, track in ipairs(tracks) do
-                    if track.Animation and track.Animation.Name then
-                        local n = track.Animation.Name:lower()
-                        if n:find("reload") then
-                            if track.Speed ~= C.fastReloadSpeed then
-                                pcall(function() track:AdjustSpeed(C.fastReloadSpeed) end)
-                            end
-                        end
-                    end
+            local speed = math.sqrt(v.X * v.X + v.Z * v.Z)
+            if speed > 5 and hum.MoveDirection.Magnitude < 0.01 then
+                local st = hum:GetState()
+                if st == Enum.HumanoidStateType.Running or st == Enum.HumanoidStateType.Landed then
+                    hrp.AssemblyLinearVelocity = Vector3.new(0, v.Y, 0)
+                    lastFastStopWrite = tick()
                 end
             end
         end
     end
 
-    -- FLY
+    -- fly
     if C.flyEnabled and hum.Health > 0 then
         local tgt = getFlyVec()
         flyVel = flyVel:Lerp(tgt, math.min(dt * C.flySmooth, 1))
         hrp.AssemblyLinearVelocity = flyVel
     end
 
+    -- lock
     locked = isLockDown()
     local count = 0
     for _ in pairs(C.selectedNames) do count = count + 1 end
@@ -619,7 +659,7 @@ RS.Heartbeat:Connect(function(dt)
         return
     end
 
-    if tick() - lastRefresh > 0.15 then
+    if tick() - lastRefresh > 0.2 then
         lastRefresh = tick()
         cachedPart, cachedPlr = findTarget()
     end
@@ -655,11 +695,14 @@ RS.RenderStepped:Connect(function(dt)
     cam.CFrame = cam.CFrame:Lerp(desired, a)
 end)
 
+-- highlights: event-driven, не по таймеру
 task.spawn(function()
     while gui.Parent do
-        task.wait(0.8)
+        task.wait(1.5)
         updateHl()
     end
 end)
 
-print("[azraeell] loaded OK")
+setupFastReload()
+
+print("[azraeell] v18 loaded — optimized")
