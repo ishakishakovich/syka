@@ -1,4 +1,4 @@
--- azraeell — lock + fast reload + fast stop + displayname menu
+-- azraeell — lock + fast reload + fast stop + fly + displayname menu
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
 local RS = game:GetService("RunService")
@@ -17,6 +17,11 @@ local C = {
     fastReloadSpeed = 1.5,
     noSlowdownEnabled = true,
     noSlowdownSpeed = 20,
+    flyEnabled = false,
+    flyKey = Enum.KeyCode.V,
+    flySpeed = 40,
+    flyVertical = 30,
+    flySmooth = 10,
 }
 
 local locked = false
@@ -24,6 +29,7 @@ local highlights = {}
 local cachedPart, cachedPlr = nil, nil
 local lastRefresh = 0
 local lastReloadCheck = 0
+local flyVel = Vector3.zero
 
 local function valid(p)
     if not p or p == plr then return false end
@@ -90,6 +96,26 @@ local function updateHl()
     end
 end
 
+local function getFlyVec()
+    if UIS:GetFocusedTextBox() then return Vector3.zero end
+    local ccf = cam.CFrame
+    local move = Vector3.zero
+    local fwd = ccf.LookVector
+    local right = ccf.RightVector
+    if UIS:IsKeyDown(Enum.KeyCode.W) then move = move + fwd end
+    if UIS:IsKeyDown(Enum.KeyCode.S) then move = move - fwd end
+    if UIS:IsKeyDown(Enum.KeyCode.A) then move = move - right end
+    if UIS:IsKeyDown(Enum.KeyCode.D) then move = move + right end
+    if UIS:IsKeyDown(Enum.KeyCode.Space) then
+        move = move + Vector3.new(0, 1, 0) * (C.flyVertical / C.flySpeed)
+    end
+    if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then
+        move = move - Vector3.new(0, 1, 0) * (C.flyVertical / C.flySpeed)
+    end
+    if move.Magnitude > 0 then move = move.Unit * C.flySpeed end
+    return move
+end
+
 -- HUD
 local hud = Instance.new("ScreenGui")
 hud.Name = "AZ"; hud.ResetOnSpawn = false
@@ -116,6 +142,21 @@ sLbl.TextColor3 = Color3.fromRGB(100, 100, 110)
 sLbl.TextSize = 11
 sLbl.TextXAlignment = Enum.TextXAlignment.Left
 
+local flyInd = Instance.new("TextLabel", hud)
+flyInd.Size = UDim2.new(0, 80, 0, 22)
+flyInd.Position = UDim2.new(0.5, -40, 1, -132)
+flyInd.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
+flyInd.BackgroundTransparency = 0.2
+flyInd.BorderSizePixel = 0
+flyInd.Font = Enum.Font.Code
+flyInd.Text = "FLY"
+flyInd.TextColor3 = Color3.fromRGB(230, 70, 80)
+flyInd.TextSize = 11
+flyInd.Visible = false
+Instance.new("UICorner", flyInd).CornerRadius = UDim.new(0, 3)
+local fiS = Instance.new("UIStroke", flyInd)
+fiS.Color = Color3.fromRGB(230, 70, 80); fiS.Thickness = 1; fiS.Transparency = 0.3
+
 local dot = Instance.new("Frame", hud)
 dot.Size = UDim2.new(0, 8, 0, 8)
 dot.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -130,7 +171,7 @@ gui.Name = "AZMenu"; gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true; gui.DisplayOrder = 999
 gui.Parent = plr:WaitForChild("PlayerGui")
 
-local MW, MH = 420, 340
+local MW, MH = 420, 400
 local menu = Instance.new("Frame", gui)
 menu.Size = UDim2.new(0, MW, 0, MH)
 menu.Position = UDim2.new(0.5, -MW/2, 0.5, -MH/2)
@@ -231,6 +272,74 @@ local function makeToggle(label, key)
         C[key] = not C[key]
         box.BackgroundColor3 = C[key] and Color3.fromRGB(230, 70, 80) or Color3.fromRGB(24, 24, 30)
         chk.Text = C[key] and "✓" or ""
+        if key == "flyEnabled" then
+            flyInd.Visible = C.flyEnabled
+            if not C.flyEnabled then flyVel = Vector3.zero end
+        end
+    end)
+end
+
+local function makeSlider(label, key, min, max)
+    local r = Instance.new("Frame", content)
+    r.Size = UDim2.new(1, 0, 0, 30)
+    r.BackgroundTransparency = 1
+    local top = Instance.new("Frame", r)
+    top.Size = UDim2.new(1, 0, 0, 14)
+    top.BackgroundTransparency = 1
+    local l = Instance.new("TextLabel", top)
+    l.Size = UDim2.new(0.7, 0, 1, 0)
+    l.BackgroundTransparency = 1
+    l.Font = Enum.Font.Code
+    l.Text = label
+    l.TextColor3 = Color3.fromRGB(210, 210, 215)
+    l.TextSize = 10
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    local v = Instance.new("TextLabel", top)
+    v.Size = UDim2.new(0.3, 0, 1, 0)
+    v.Position = UDim2.new(0.7, 0, 0, 0)
+    v.BackgroundTransparency = 1
+    v.Font = Enum.Font.Code
+    v.Text = tostring(C[key])
+    v.TextColor3 = Color3.fromRGB(230, 70, 80)
+    v.TextSize = 10
+    v.TextXAlignment = Enum.TextXAlignment.Right
+
+    local bar = Instance.new("Frame", r)
+    bar.Size = UDim2.new(1, 0, 0, 3)
+    bar.Position = UDim2.new(0, 0, 0, 18)
+    bar.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
+    bar.BorderSizePixel = 0
+    local fill = Instance.new("Frame", bar)
+    fill.Size = UDim2.new((C[key] - min) / (max - min), 0, 1, 0)
+    fill.BackgroundColor3 = Color3.fromRGB(230, 70, 80)
+    fill.BorderSizePixel = 0
+
+    local b = Instance.new("TextButton", r)
+    b.Size = UDim2.new(1, 0, 0, 12)
+    b.Position = UDim2.new(0, 0, 0, 14)
+    b.BackgroundTransparency = 1
+    b.Text = ""
+    local drag = false
+    local function setX(x)
+        local rel = math.clamp((x - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+        local val = min + (max - min) * rel
+        val = math.floor(val * 10 + 0.5) / 10
+        C[key] = val
+        v.Text = tostring(val)
+        fill.Size = UDim2.new(rel, 0, 1, 0)
+    end
+    b.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+            drag = true; setX(i.Position.X)
+        end
+    end)
+    UIS.InputChanged:Connect(function(i)
+        if drag and i.UserInputType == Enum.UserInputType.MouseMovement then
+            setX(i.Position.X)
+        end
+    end)
+    UIS.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then drag = false end
     end)
 end
 
@@ -280,6 +389,11 @@ section("MOVEMENT")
 makeToggle("fast stop", "fastStop")
 makeToggle("fast reload", "fastReload")
 makeToggle("no slowdown", "noSlowdownEnabled")
+
+section("FLY (V)")
+makeToggle("fly enabled", "flyEnabled")
+makeSlider("fly speed", "flySpeed", 10, 150)
+makeSlider("fly vertical", "flyVertical", 10, 100)
 
 section("PLAYERS")
 
@@ -365,7 +479,7 @@ Players.PlayerRemoving:Connect(function(p)
     task.wait(0.2); refresh()
 end)
 
--- DisplayName обновление (если меняется)
+-- DisplayName updater
 task.spawn(function()
     while gui.Parent do
         task.wait(5)
@@ -381,7 +495,6 @@ task.spawn(function()
     end
 end)
 
--- menu toggle
 local menuOpen = false
 local function openMenu()
     menuOpen = true
@@ -397,7 +510,6 @@ end
 
 closeBtn.MouseButton1Click:Connect(closeMenu)
 
--- drag
 do
     local drag, ds, sp
     header.InputBegan:Connect(function(i)
@@ -418,9 +530,17 @@ end
 
 UIS.InputBegan:Connect(function(i, gp)
     if gp then return end
+
     if i.KeyCode == Enum.KeyCode.RightShift then
         if menuOpen then closeMenu() else openMenu() end
     end
+
+    if i.KeyCode == C.flyKey and not UIS:GetFocusedTextBox() then
+        C.flyEnabled = not C.flyEnabled
+        flyInd.Visible = C.flyEnabled
+        if not C.flyEnabled then flyVel = Vector3.zero end
+    end
+
     if i.KeyCode == Enum.KeyCode.End then
         pcall(function() gui:Destroy() end)
         pcall(function() hud:Destroy() end)
@@ -437,7 +557,6 @@ RS:BindToRenderStep("AZMouse", Enum.RenderPriority.Camera.Value + 1, function()
     end
 end)
 
--- MAIN LOOP
 RS.Heartbeat:Connect(function(dt)
     local char = plr.Character
     if not char then return end
@@ -445,12 +564,10 @@ RS.Heartbeat:Connect(function(dt)
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hrp or not hum then return end
 
-    -- NO SLOWDOWN
     if C.noSlowdownEnabled and hum.Health > 0 and hum.WalkSpeed < C.noSlowdownSpeed then
         hum.WalkSpeed = C.noSlowdownSpeed
     end
 
-    -- FAST STOP
     if C.fastStop and hum.Health > 0 then
         local st = hum:GetState()
         local onG = st == Enum.HumanoidStateType.Running or st == Enum.HumanoidStateType.Landed
@@ -462,7 +579,6 @@ RS.Heartbeat:Connect(function(dt)
         end
     end
 
-    -- FAST RELOAD
     if C.fastReload and tick() - lastReloadCheck > 0.2 then
         lastReloadCheck = tick()
         local animator = hum:FindFirstChildOfClass("Animator")
@@ -483,7 +599,13 @@ RS.Heartbeat:Connect(function(dt)
         end
     end
 
-    -- LOCK
+    -- FLY
+    if C.flyEnabled and hum.Health > 0 then
+        local tgt = getFlyVec()
+        flyVel = flyVel:Lerp(tgt, math.min(dt * C.flySmooth, 1))
+        hrp.AssemblyLinearVelocity = flyVel
+    end
+
     locked = isLockDown()
     local count = 0
     for _ in pairs(C.selectedNames) do count = count + 1 end
@@ -526,7 +648,6 @@ RS.Heartbeat:Connect(function(dt)
     end
 end)
 
--- camera
 RS.RenderStepped:Connect(function(dt)
     if not locked or not cachedPart then return end
     local desired = CFrame.lookAt(cam.CFrame.Position, cachedPart.Position)
@@ -534,7 +655,6 @@ RS.RenderStepped:Connect(function(dt)
     cam.CFrame = cam.CFrame:Lerp(desired, a)
 end)
 
--- highlights loop
 task.spawn(function()
     while gui.Parent do
         task.wait(0.8)
