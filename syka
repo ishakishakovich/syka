@@ -1,5 +1,5 @@
 -- ============================================================
--- azraeell — Lock Menu v12
+-- azraeell — Lock Menu v13 (no-slowdown)
 -- RightShift = menu | E/RMB/Q = lock | V = fly | End = unload
 -- ============================================================
 
@@ -41,6 +41,8 @@ local C = {
     hitSoundId = "rbxassetid://9118823101",
     hitSoundVolume = 0.5,
     fpsBooster = false,
+    noSlowdownEnabled = true,
+    noSlowdownSpeed = 20,
 }
 
 -- CYAN THEME
@@ -69,6 +71,7 @@ local lastSoundAt = 0
 local fpsBoosterActive = false
 local fpsDisabled = {}
 local fpsLightingSaved = {}
+local noSlowdownConn = nil
 
 -- ============================================================
 -- HELPERS
@@ -146,7 +149,31 @@ local function findNearestTarget()
 end
 
 -- ============================================================
--- SOUND (fixed — PlayLocalSound)
+-- NO SLOWDOWN
+-- ============================================================
+local function startNoSlowdown()
+    if noSlowdownConn then return end
+    noSlowdownConn = RS.RenderStepped:Connect(function()
+        if not C.noSlowdownEnabled then return end
+        local char = plr.Character
+        if not char then return end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum then return end
+        if hum.WalkSpeed < C.noSlowdownSpeed then
+            hum.WalkSpeed = C.noSlowdownSpeed
+        end
+    end)
+end
+
+local function stopNoSlowdown()
+    if noSlowdownConn then
+        noSlowdownConn:Disconnect()
+        noSlowdownConn = nil
+    end
+end
+
+-- ============================================================
+-- SOUND
 -- ============================================================
 local function playHitSound()
     if not C.hitSoundEnabled then return end
@@ -303,7 +330,6 @@ hud.Name = "AzraeellHUD"; hud.ResetOnSpawn = false
 hud.IgnoreGuiInset = true; hud.DisplayOrder = 998
 hud.Parent = plr:WaitForChild("PlayerGui")
 
--- status
 local statusFrame = Instance.new("Frame", hud)
 statusFrame.Size = UDim2.new(0, 280, 0, 32)
 statusFrame.Position = UDim2.new(0.5, -140, 1, -130)
@@ -325,7 +351,6 @@ statusLbl.TextColor3 = COL_DIM
 statusLbl.TextSize = 12
 statusLbl.TextXAlignment = Enum.TextXAlignment.Left
 
--- HP
 local hpFrame = Instance.new("Frame", hud)
 hpFrame.Size = UDim2.new(0, 280, 0, 44)
 hpFrame.Position = UDim2.new(0.5, -140, 1, -172)
@@ -370,7 +395,6 @@ hpBarText.TextColor3 = Color3.fromRGB(255, 255, 255)
 hpBarText.TextSize = 10
 hpBarText.TextStrokeTransparency = 0.5
 
--- fly
 local flyFrame = Instance.new("Frame", hud)
 flyFrame.Size = UDim2.new(0, 90, 0, 26)
 flyFrame.Position = UDim2.new(0.5, -45, 1, -206)
@@ -472,7 +496,6 @@ menu.ZIndex = 1
 corner(menu, 8)
 stroke(menu, COL_OFF, 1, 0.3)
 
--- header
 local headerBg = Instance.new("Frame", menu)
 headerBg.Size = UDim2.new(1, 0, 0, 52)
 headerBg.BackgroundColor3 = COL_HEADER
@@ -508,7 +531,6 @@ closeBtn.TextSize = 16
 closeBtn.AutoButtonColor = false
 corner(closeBtn, 5)
 
--- tabs bar
 local tabBar = Instance.new("Frame", menu)
 tabBar.Size = UDim2.new(1, -16, 0, 30)
 tabBar.Position = UDim2.new(0, 8, 0, 60)
@@ -522,7 +544,6 @@ tabLayout.Padding = UDim.new(0, 2)
 tabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 pad(tabBar, 3)
 
--- content
 local content = Instance.new("Frame", menu)
 content.Size = UDim2.new(1, -16, 1, -104)
 content.Position = UDim2.new(0, 8, 0, 98)
@@ -712,7 +733,6 @@ local function makeButton(parent, label, callback, color)
 end
 
 local function makeBtnRow(parent, items)
-    -- items: {{text, val, callback}, ...}
     local row = Instance.new("Frame", parent)
     row.Size = UDim2.new(1, 0, 0, 26)
     row.BackgroundTransparency = 1
@@ -742,12 +762,23 @@ local function makeBtnRow(parent, items)
             pcall(item[3])
         end)
     end
-    -- set first active
     if btns[1] then
         btns[1].BackgroundColor3 = COL_ACCENT
         btns[1].TextColor3 = COL_BG
     end
     return row, btns
+end
+
+local function sectionLabel(parent, text)
+    local lbl = Instance.new("TextLabel", parent)
+    lbl.Size = UDim2.new(1, 0, 0, 18)
+    lbl.BackgroundTransparency = 1
+    lbl.Font = Enum.Font.GothamBold
+    lbl.Text = text
+    lbl.TextColor3 = COL_ACCENT2
+    lbl.TextSize = 10
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    return lbl
 end
 
 -- ============ PAGES ============
@@ -771,19 +802,7 @@ tabTarget.MouseButton1Click:Connect(function() selectTab("TARGET") end)
 tabFly.MouseButton1Click:Connect(function() selectTab("FLY") end)
 tabPerf.MouseButton1Click:Connect(function() selectTab("PERF") end)
 
--- === LOCK PAGE ===
-local function sectionLabel(parent, text)
-    local lbl = Instance.new("TextLabel", parent)
-    lbl.Size = UDim2.new(1, 0, 0, 18)
-    lbl.BackgroundTransparency = 1
-    lbl.Font = Enum.Font.GothamBold
-    lbl.Text = text
-    lbl.TextColor3 = COL_ACCENT2
-    lbl.TextSize = 10
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    return lbl
-end
-
+-- LOCK PAGE
 sectionLabel(pageLock, "BUTTON")
 makeBtnRow(pageLock, {
     {"E", "E", function() C.lockButton = "E" end},
@@ -808,7 +827,7 @@ makeSlider(pageLock, "Smooth", "smooth", 0.05, 1, "")
 makeToggle(pageLock, "Team check", "teamCheck")
 makeToggle(pageLock, "Ignore dead", "ignoreDead")
 
--- === TARGET PAGE ===
+-- TARGET PAGE
 sectionLabel(pageTarget, "HIGHLIGHT")
 makeToggle(pageTarget, "Highlight", "showHighlight", function(v)
     if not v then clearAllHighlights() end
@@ -850,7 +869,7 @@ end)
 makeSlider(pageTarget, "Volume", "hitSoundVolume", 0, 1, "")
 makeButton(pageTarget, "Test sound", playHitSound)
 
--- === FLY PAGE ===
+-- FLY PAGE
 sectionLabel(pageFly, "FLY (V)")
 makeSlider(pageFly, "Speed", "flySpeed", 15, 150, "")
 makeSlider(pageFly, "Vertical", "flyVertical", 10, 100, "")
@@ -866,25 +885,32 @@ makeBtnRow(pageFly, {
     {"110", 110, function() C.fov = 110; if cam then cam.FieldOfView = 110 end end},
 })
 
--- === PERF PAGE ===
+-- PERF PAGE
+sectionLabel(pagePerf, "NO SLOWDOWN")
+makeToggle(pagePerf, "No slowdown (shotgun)", "noSlowdownEnabled", function(v)
+    if v then startNoSlowdown() else stopNoSlowdown() end
+end)
+makeSlider(pagePerf, "Speed", "noSlowdownSpeed", 8, 30, "")
+
 sectionLabel(pagePerf, "FPS BOOSTER")
 makeToggle(pagePerf, "FPS booster", "fpsBooster", function(v)
     if v then enableFpsBooster() else disableFpsBooster() end
 end)
 
+sectionLabel(pagePerf, "ACTIONS")
 makeButton(pagePerf, "Unload script", function()
     pcall(function() disableFpsBooster() end)
+    pcall(function() stopNoSlowdown() end)
     pcall(function() gui:Destroy() end)
     pcall(function() hud:Destroy() end)
     clearAllHighlights()
     _G.__azraeell_loaded = false
 end, COL_DANGER)
 
--- select first
 selectTab("LOCK")
 
 -- ============================================================
--- PLAYER LIST PANEL (left side of menu)
+-- PLAYER LIST
 -- ============================================================
 local listPanel = Instance.new("Frame", menu)
 listPanel.Size = UDim2.new(0, 200, 0, 220)
@@ -1039,7 +1065,6 @@ task.spawn(function()
     end
 end)
 
--- FLY toggle
 UIS.InputBegan:Connect(function(input, gp)
     if gp then return end
     if input.KeyCode == C.flyKey and not UIS:GetFocusedTextBox() then
@@ -1116,7 +1141,6 @@ RS.RenderStepped:Connect(function(dt)
     statusStroke.Color = COL_SUCCESS
     statusStroke.Transparency = 0.2
 
-    -- HP
     if C.showHpBar and tplr and tplr.Character then
         local th = tplr.Character:FindFirstChildOfClass("Humanoid")
         if th then
@@ -1138,7 +1162,6 @@ RS.RenderStepped:Connect(function(dt)
             hpTop.Text = tplr.Name .. armorStr
             hpStroke.Color = hpCol
 
-            -- HIT SOUND
             if lastTargetName ~= tplr.Name then
                 lastTargetName = tplr.Name
                 lastTargetHp = th.Health
@@ -1192,7 +1215,6 @@ RS.RenderStepped:Connect(function(dt)
     cam.CFrame = cam.CFrame:Lerp(desired, a)
 end)
 
--- toggle lock
 UIS.InputBegan:Connect(function(input, gp)
     if gp then return end
     if UIS:GetFocusedTextBox() then return end
@@ -1282,6 +1304,7 @@ UIS.InputBegan:Connect(function(i, gp)
         if menuOpen then closeMenu() else openMenu() end
     elseif i.KeyCode == Enum.KeyCode.End then
         pcall(function() disableFpsBooster() end)
+        pcall(function() stopNoSlowdown() end)
         pcall(function() gui:Destroy() end)
         pcall(function() hud:Destroy() end)
         clearAllHighlights()
@@ -1289,5 +1312,8 @@ UIS.InputBegan:Connect(function(i, gp)
     end
 end)
 
+-- автозапуск no-slowdown
+startNoSlowdown()
+
 _G.__azraeell_loaded = true
-print("[azraeell] v12 loaded")
+print("[azraeell] v13 loaded")
