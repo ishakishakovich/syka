@@ -1,5 +1,5 @@
 -- ============================================================
--- azraeell — v14 (lagfix + new look)
+-- azraeell — v15 (cheat-style menu)
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -42,21 +42,30 @@ local C = {
     fpsBooster = false,
     noSlowdownEnabled = true,
     noSlowdownSpeed = 20,
+    fastStop = false,
+    fastReload = false,
+    fastReloadSpeed = 1.5,
+    autoTabSwitch = true,
+    hitmarkerEnabled = true,
+    hitmarkerColor = Color3.fromRGB(255, 60, 70),
+    menuKey = Enum.KeyCode.RightShift,
 }
 
--- THEME
-local COL_BG       = Color3.fromRGB(11, 9, 16)
-local COL_HEADER   = Color3.fromRGB(16, 12, 22)
-local COL_SIDEBAR  = Color3.fromRGB(13, 10, 19)
-local COL_PANEL    = Color3.fromRGB(20, 16, 28)
-local COL_BTN      = Color3.fromRGB(28, 22, 40)
-local COL_ACCENT   = Color3.fromRGB(160, 100, 240)
-local COL_ACCENT2  = Color3.fromRGB(110, 70, 170)
-local COL_TEXT     = Color3.fromRGB(225, 215, 240)
-local COL_DIM      = Color3.fromRGB(120, 100, 150)
-local COL_DANGER   = Color3.fromRGB(240, 80, 100)
-local COL_SUCCESS  = Color3.fromRGB(90, 220, 140)
-local COL_OFF      = Color3.fromRGB(45, 35, 60)
+-- CHEAT THEME
+local COL_BG       = Color3.fromRGB(10, 10, 12)
+local COL_HEADER   = Color3.fromRGB(14, 14, 17)
+local COL_SIDEBAR  = Color3.fromRGB(13, 13, 16)
+local COL_PANEL    = Color3.fromRGB(18, 18, 22)
+local COL_BTN      = Color3.fromRGB(24, 24, 30)
+local COL_ACCENT   = Color3.fromRGB(230, 70, 80)
+local COL_ACCENT2  = Color3.fromRGB(160, 50, 60)
+local COL_TEXT     = Color3.fromRGB(210, 210, 215)
+local COL_DIM      = Color3.fromRGB(100, 100, 110)
+local COL_DANGER   = Color3.fromRGB(240, 70, 80)
+local COL_SUCCESS  = Color3.fromRGB(80, 200, 120)
+local COL_OFF      = Color3.fromRGB(40, 40, 48)
+local MONO         = Enum.Font.Code
+local MONO_B       = Enum.Font.Code
 
 -- ============================================================
 -- STATE
@@ -71,8 +80,8 @@ local lastSoundAt = 0
 local fpsBoosterActive = false
 local fpsDisabled = {}
 local fpsLightingSaved = {}
+local cycleIndex = 0
 
--- cached char
 local _char, _hrp, _hum
 local function getMyChar()
     local c = plr.Character
@@ -139,24 +148,37 @@ local function countSelected()
     return n
 end
 
-local function findNearestTarget()
-    local camPos = cam.CFrame.Position
-    local bestPart, bestPlr, bestDist = nil, nil, math.huge
+local function getSortedAlive()
+    local alive = {}
     for name, _ in pairs(C.selectedNames) do
         local p = Players:FindFirstChild(name)
         if p and valid(p) then
             local part = getTargetPart(p.Character)
             if part then
-                local d = (part.Position - camPos).Magnitude
-                if d < bestDist then
-                    bestDist = d
-                    bestPart = part
-                    bestPlr = p
-                end
+                table.insert(alive, {p = p, part = part})
             end
         end
     end
-    return bestPart, bestPlr, bestDist
+    table.sort(alive, function(a, b)
+        local da = (a.part.Position - cam.CFrame.Position).Magnitude
+        local db = (b.part.Position - cam.CFrame.Position).Magnitude
+        return da < db
+    end)
+    return alive
+end
+
+local function findNearestTarget()
+    local alive = getSortedAlive()
+    if #alive == 0 then return nil, nil, 0 end
+    if cycleIndex > #alive then cycleIndex = 1 end
+    if cycleIndex < 1 then cycleIndex = 1 end
+    local t = alive[cycleIndex]
+    if not t then
+        cycleIndex = 1
+        t = alive[1]
+    end
+    local dist = (t.part.Position - cam.CFrame.Position).Magnitude
+    return t.part, t.p, dist
 end
 
 -- ============================================================
@@ -169,11 +191,8 @@ local function playHitSound()
         local s = Instance.new("Sound")
         s.SoundId = C.hitSoundId
         s.Volume = C.hitSoundVolume
-        s.PlaybackSpeed = 1
         SoundService:PlayLocalSound(s)
-        task.delay(3, function()
-            if s then s:Destroy() end
-        end)
+        task.delay(2, function() if s then s:Destroy() end end)
     end)
 end
 
@@ -223,7 +242,7 @@ local function updateHighlights()
             h.Adornee = p.Character
             h.FillColor = COL_ACCENT
             h.OutlineColor = COL_ACCENT
-            h.FillTransparency = 0.75
+            h.FillTransparency = 0.78
             h.OutlineTransparency = 0
             h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
             h.Parent = p.Character
@@ -240,7 +259,7 @@ local function clearAllHighlights()
 end
 
 -- ============================================================
--- FPS BOOSTER (БЕЗ ЛАГА — один скан + DescendantAdded)
+-- FPS BOOSTER
 -- ============================================================
 local fpsAddConn = nil
 local function shouldDisable(d)
@@ -266,8 +285,6 @@ local function enableFpsBooster()
     pcall(function()
         UserSettingsService().GameSettings.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
     end)
-
-    -- ОДИН проход, без цикла
     for _, d in ipairs(workspace:GetDescendants()) do
         if shouldDisable(d) then
             pcall(function()
@@ -278,8 +295,6 @@ local function enableFpsBooster()
             end)
         end
     end
-
-    -- ловим новые объекты — дёшево
     if fpsAddConn then fpsAddConn:Disconnect() end
     fpsAddConn = workspace.DescendantAdded:Connect(function(d)
         if not fpsBoosterActive then return end
@@ -323,127 +338,143 @@ hud.Name = "AzraeellHUD"; hud.ResetOnSpawn = false
 hud.IgnoreGuiInset = true; hud.DisplayOrder = 998
 hud.Parent = plr:WaitForChild("PlayerGui")
 
+-- hitmarker (X в центре экрана)
+local hitmarkerGui = Instance.new("Frame", hud)
+hitmarkerGui.Size = UDim2.new(0, 60, 0, 60)
+hitmarkerGui.AnchorPoint = Vector2.new(0.5, 0.5)
+hitmarkerGui.Position = UDim2.new(0.5, 0, 0.5, 0)
+hitmarkerGui.BackgroundTransparency = 1
+hitmarkerGui.Visible = false
+
+local hitLines = {}
+for i = 1, 4 do
+    local line = Instance.new("Frame", hitmarkerGui)
+    line.Size = UDim2.new(0, 2, 0, 12)
+    line.AnchorPoint = Vector2.new(0.5, 0.5)
+    line.BackgroundColor3 = C.hitmarkerColor
+    line.BorderSizePixel = 0
+    local angle = (i - 1) * 90 + 45
+    line.Rotation = angle
+    local rad = math.rad(angle)
+    line.Position = UDim2.new(0.5, math.cos(rad) * 14, 0.5, math.sin(rad) * 14)
+    table.insert(hitLines, line)
+end
+
+local hitmarkerTween = nil
+local function showHitmarker()
+    if not C.hitmarkerEnabled then return end
+    hitmarkerGui.Visible = true
+    hitmarkerGui.Size = UDim2.new(0, 60, 0, 60)
+    for _, l in ipairs(hitLines) do
+        l.BackgroundColor3 = C.hitmarkerColor
+        l.Size = UDim2.new(0, 2, 0, 12)
+    end
+    if hitmarkerTween then hitmarkerTween:Cancel() end
+    hitmarkerTween = Tween:Create(hitmarkerGui, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, 90, 0, 90),
+    })
+    hitmarkerTween:Play()
+    for _, l in ipairs(hitLines) do
+        Tween:Create(l, TweenInfo.new(0.35), {
+            BackgroundTransparency = 1,
+        }):Play()
+    end
+    task.delay(0.35, function()
+        if hitmarkerGui then
+            hitmarkerGui.Visible = false
+            for _, l in ipairs(hitLines) do
+                l.BackgroundTransparency = 0
+            end
+        end
+    end)
+end
+
+-- status
 local statusFrame = Instance.new("Frame", hud)
-statusFrame.Size = UDim2.new(0, 260, 0, 30)
-statusFrame.Position = UDim2.new(0.5, -130, 1, -110)
+statusFrame.Size = UDim2.new(0, 240, 0, 26)
+statusFrame.Position = UDim2.new(0.5, -120, 1, -100)
 statusFrame.BackgroundColor3 = COL_BG
-statusFrame.BackgroundTransparency = 0.25
+statusFrame.BackgroundTransparency = 0.2
 statusFrame.BorderSizePixel = 0
-Instance.new("UICorner", statusFrame).CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", statusFrame).CornerRadius = UDim.new(0, 3)
 
 local statusStroke = Instance.new("UIStroke", statusFrame)
-statusStroke.Color = COL_DANGER; statusStroke.Thickness = 1.2; statusStroke.Transparency = 0.4
+statusStroke.Color = COL_DANGER; statusStroke.Thickness = 1; statusStroke.Transparency = 0.3
 
 local statusLbl = Instance.new("TextLabel", statusFrame)
 statusLbl.Size = UDim2.new(1, -16, 1, 0)
 statusLbl.Position = UDim2.new(0, 8, 0, 0)
 statusLbl.BackgroundTransparency = 1
-statusLbl.Font = Enum.Font.GothamBold
-statusLbl.Text = "LOCK OFF"
+statusLbl.Font = MONO_B
+statusLbl.Text = "IDLE"
 statusLbl.TextColor3 = COL_DIM
-statusLbl.TextSize = 12
+statusLbl.TextSize = 11
 statusLbl.TextXAlignment = Enum.TextXAlignment.Left
 
+-- HP
 local hpFrame = Instance.new("Frame", hud)
-hpFrame.Size = UDim2.new(0, 260, 0, 42)
-hpFrame.Position = UDim2.new(0.5, -130, 1, -150)
+hpFrame.Size = UDim2.new(0, 240, 0, 40)
+hpFrame.Position = UDim2.new(0.5, -120, 1, -138)
 hpFrame.BackgroundColor3 = COL_BG
-hpFrame.BackgroundTransparency = 0.25
+hpFrame.BackgroundTransparency = 0.2
 hpFrame.BorderSizePixel = 0
 hpFrame.Visible = false
-Instance.new("UICorner", hpFrame).CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", hpFrame).CornerRadius = UDim.new(0, 3)
 
 local hpStroke = Instance.new("UIStroke", hpFrame)
-hpStroke.Color = COL_ACCENT; hpStroke.Thickness = 1.2; hpStroke.Transparency = 0.4
+hpStroke.Color = COL_ACCENT; hpStroke.Thickness = 1; hpStroke.Transparency = 0.3
 
 local hpTop = Instance.new("TextLabel", hpFrame)
-hpTop.Size = UDim2.new(1, -16, 0, 14)
-hpTop.Position = UDim2.new(0, 8, 0, 3)
+hpTop.Size = UDim2.new(1, -14, 0, 14)
+hpTop.Position = UDim2.new(0, 7, 0, 3)
 hpTop.BackgroundTransparency = 1
-hpTop.Font = Enum.Font.GothamBold
+hpTop.Font = MONO_B
 hpTop.Text = ""
 hpTop.TextColor3 = COL_TEXT
-hpTop.TextSize = 11
+hpTop.TextSize = 10
 hpTop.TextXAlignment = Enum.TextXAlignment.Left
 
 local hpBarBg = Instance.new("Frame", hpFrame)
-hpBarBg.Size = UDim2.new(1, -16, 0, 16)
-hpBarBg.Position = UDim2.new(0, 8, 0, 22)
-hpBarBg.BackgroundColor3 = Color3.fromRGB(25, 20, 35)
+hpBarBg.Size = UDim2.new(1, -14, 0, 14)
+hpBarBg.Position = UDim2.new(0, 7, 0, 20)
+hpBarBg.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
 hpBarBg.BorderSizePixel = 0
-Instance.new("UICorner", hpBarBg).CornerRadius = UDim.new(0, 3)
+Instance.new("UICorner", hpBarBg).CornerRadius = UDim.new(0, 2)
 
 local hpBarFill = Instance.new("Frame", hpBarBg)
 hpBarFill.Size = UDim2.new(1, 0, 1, 0)
-hpBarFill.BackgroundColor3 = Color3.fromRGB(90, 220, 140)
+hpBarFill.BackgroundColor3 = COL_SUCCESS
 hpBarFill.BorderSizePixel = 0
-Instance.new("UICorner", hpBarFill).CornerRadius = UDim.new(0, 3)
+Instance.new("UICorner", hpBarFill).CornerRadius = UDim.new(0, 2)
 
 local hpBarText = Instance.new("TextLabel", hpBarBg)
 hpBarText.Size = UDim2.new(1, 0, 1, 0)
 hpBarText.BackgroundTransparency = 1
-hpBarText.Font = Enum.Font.GothamBold
+hpBarText.Font = MONO_B
 hpBarText.Text = ""
 hpBarText.TextColor3 = Color3.fromRGB(255, 255, 255)
-hpBarText.TextSize = 10
+hpBarText.TextSize = 9
 hpBarText.TextStrokeTransparency = 0.5
 
-local flyFrame = Instance.new("Frame", hud)
-flyFrame.Size = UDim2.new(0, 80, 0, 24)
-flyFrame.Position = UDim2.new(0.5, -40, 1, -180)
-flyFrame.BackgroundColor3 = COL_BG
-flyFrame.BackgroundTransparency = 0.25
-flyFrame.BorderSizePixel = 0
-flyFrame.Visible = false
-Instance.new("UICorner", flyFrame).CornerRadius = UDim.new(0, 6)
-
-local flyStroke = Instance.new("UIStroke", flyFrame)
-flyStroke.Color = COL_ACCENT; flyStroke.Thickness = 1.2; flyStroke.Transparency = 0.3
-
-local flyLbl = Instance.new("TextLabel", flyFrame)
-flyLbl.Size = UDim2.new(1, 0, 1, 0)
-flyLbl.BackgroundTransparency = 1
-flyLbl.Font = Enum.Font.GothamBlack
-flyLbl.Text = "✈ FLY"
-flyLbl.TextColor3 = COL_ACCENT
-flyLbl.TextSize = 12
-
+-- dot
 local dot = Instance.new("Frame", hud)
-dot.Size = UDim2.new(0, 10, 0, 10)
+dot.Size = UDim2.new(0, 8, 0, 8)
 dot.AnchorPoint = Vector2.new(0.5, 0.5)
 dot.BackgroundColor3 = COL_ACCENT
-dot.BackgroundTransparency = 0.2
 dot.BorderSizePixel = 0
 dot.Visible = false
 Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
 
-local dotRing = Instance.new("Frame", dot)
-dotRing.Size = UDim2.new(2, 0, 2, 0)
-dotRing.Position = UDim2.new(-0.5, 0, -0.5, 0)
-dotRing.BackgroundTransparency = 1
-Instance.new("UICorner", dotRing).CornerRadius = UDim.new(1, 0)
-local dotRingStroke = Instance.new("UIStroke", dotRing)
-dotRingStroke.Color = COL_ACCENT; dotRingStroke.Thickness = 1.5; dotRingStroke.Transparency = 0.4
-
 local arrow = Instance.new("TextLabel", hud)
-arrow.Size = UDim2.new(0, 40, 0, 40)
+arrow.Size = UDim2.new(0, 32, 0, 32)
 arrow.AnchorPoint = Vector2.new(0.5, 0.5)
 arrow.BackgroundTransparency = 1
-arrow.Font = Enum.Font.GothamBlack
-arrow.Text = "➤"; arrow.TextColor3 = COL_ACCENT
-arrow.TextSize = 32; arrow.Visible = false
-
-local distLbl = Instance.new("TextLabel", hud)
-distLbl.Size = UDim2.new(0, 200, 0, 16)
-distLbl.Position = UDim2.new(0.5, -100, 0, 22)
-distLbl.BackgroundTransparency = 1
-distLbl.Font = Enum.Font.GothamBold
-distLbl.Text = ""; distLbl.TextColor3 = COL_ACCENT
-distLbl.TextSize = 11
-distLbl.TextXAlignment = Enum.TextXAlignment.Center
+arrow.Font = MONO_B
+arrow.Text = ">"; arrow.TextColor3 = COL_ACCENT
+arrow.TextSize = 24; arrow.Visible = false
 
 -- ============================================================
--- MENU
+-- MENU (cheat style)
 -- ============================================================
 local gui = Instance.new("ScreenGui")
 gui.Name = "AzraeellMenu"; gui.ResetOnSpawn = false
@@ -451,7 +482,7 @@ gui.IgnoreGuiInset = true; gui.DisplayOrder = 999
 gui.Parent = plr:WaitForChild("PlayerGui")
 
 local function corner(p, r)
-    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r or 6); c.Parent = p; return c
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r or 3); c.Parent = p; return c
 end
 local function stroke(p, col, th, tr)
     local s = Instance.new("UIStroke")
@@ -465,7 +496,7 @@ local function pad(p, n)
     u.Parent = p; return u
 end
 
-local MW, MH = 640, 480
+local MW, MH = 520, 380
 
 local menu = Instance.new("Frame", gui)
 menu.Name = "Main"
@@ -475,78 +506,97 @@ menu.BackgroundColor3 = COL_BG
 menu.BorderSizePixel = 0
 menu.Visible = false
 menu.ClipsDescendants = true
-corner(menu, 10)
+corner(menu, 4)
 stroke(menu, COL_OFF, 1, 0.3)
 
 -- header
 local header = Instance.new("Frame", menu)
-header.Size = UDim2.new(1, 0, 0, 46)
+header.Size = UDim2.new(1, 0, 0, 30)
 header.BackgroundColor3 = COL_HEADER
 header.BorderSizePixel = 0
-corner(header, 10)
 
 local headerLine = Instance.new("Frame", header)
 headerLine.Size = UDim2.new(1, 0, 0, 1)
 headerLine.Position = UDim2.new(0, 0, 1, -1)
-headerLine.BackgroundColor3 = COL_OFF
+headerLine.BackgroundColor3 = COL_ACCENT
 headerLine.BorderSizePixel = 0
 
 local title = Instance.new("TextLabel", header)
-title.Size = UDim2.new(0, 200, 0, 24)
-title.Position = UDim2.new(0, 16, 0, 11)
+title.Size = UDim2.new(0, 200, 1, 0)
+title.Position = UDim2.new(0, 10, 0, 0)
 title.BackgroundTransparency = 1
-title.Font = Enum.Font.GothamBold
+title.Font = MONO_B
 title.Text = "azraeell"
 title.TextColor3 = COL_ACCENT
-title.TextSize = 18
+title.TextSize = 13
 title.TextXAlignment = Enum.TextXAlignment.Left
 
-local statusDot = Instance.new("Frame", header)
-statusDot.Size = UDim2.new(0, 5, 0, 5)
-statusDot.Position = UDim2.new(0, 95, 0, 21)
-statusDot.BackgroundColor3 = COL_SUCCESS
-statusDot.BorderSizePixel = 0
-corner(statusDot, 3)
+local subLbl = Instance.new("TextLabel", header)
+subLbl.Size = UDim2.new(0, 100, 1, 0)
+subLbl.Position = UDim2.new(0, 80, 0, 0)
+subLbl.BackgroundTransparency = 1
+subLbl.Font = MONO
+subLbl.Text = "v15"
+subLbl.TextColor3 = COL_DIM
+subLbl.TextSize = 10
+subLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+local statusHeaderDot = Instance.new("Frame", header)
+statusHeaderDot.Size = UDim2.new(0, 5, 0, 5)
+statusHeaderDot.Position = UDim2.new(1, -70, 0.5, -2)
+statusHeaderDot.BackgroundColor3 = COL_SUCCESS
+statusHeaderDot.BorderSizePixel = 0
+corner(statusHeaderDot, 3)
+
+local statusHeaderLbl = Instance.new("TextLabel", header)
+statusHeaderLbl.Size = UDim2.new(0, 40, 1, 0)
+statusHeaderLbl.Position = UDim2.new(1, -60, 0, 0)
+statusHeaderLbl.BackgroundTransparency = 1
+statusHeaderLbl.Font = MONO_B
+statusHeaderLbl.Text = "LIVE"
+statusHeaderLbl.TextColor3 = COL_SUCCESS
+statusHeaderLbl.TextSize = 9
+statusHeaderLbl.TextXAlignment = Enum.TextXAlignment.Left
 
 local closeBtn = Instance.new("TextButton", header)
-closeBtn.Size = UDim2.new(0, 26, 0, 26)
-closeBtn.Position = UDim2.new(1, -38, 0, 10)
-closeBtn.BackgroundColor3 = COL_BTN
+closeBtn.Size = UDim2.new(0, 22, 0, 22)
+closeBtn.Position = UDim2.new(1, -28, 0, 4)
+closeBtn.BackgroundColor3 = COL_HEADER
 closeBtn.BorderSizePixel = 0
-closeBtn.Font = Enum.Font.GothamBold
-closeBtn.Text = "×"
+closeBtn.Font = MONO_B
+closeBtn.Text = "X"
 closeBtn.TextColor3 = COL_DIM
-closeBtn.TextSize = 16
+closeBtn.TextSize = 11
 closeBtn.AutoButtonColor = false
-corner(closeBtn, 5)
+corner(closeBtn, 2)
 
--- sidebar
-local sidebar = Instance.new("Frame", menu)
-sidebar.Size = UDim2.new(0, 130, 1, -46)
-sidebar.Position = UDim2.new(0, 0, 0, 46)
-sidebar.BackgroundColor3 = COL_SIDEBAR
-sidebar.BorderSizePixel = 0
+-- tabs row
+local tabBar = Instance.new("Frame", menu)
+tabBar.Size = UDim2.new(1, 0, 0, 26)
+tabBar.Position = UDim2.new(0, 0, 0, 30)
+tabBar.BackgroundColor3 = COL_HEADER
+tabBar.BorderSizePixel = 0
 
-local sidebarLine = Instance.new("Frame", sidebar)
-sidebarLine.Size = UDim2.new(1, 0, 0, 1)
-sidebarLine.Position = UDim2.new(0, 0, 0, 0)
-sidebarLine.BackgroundColor3 = COL_OFF
-sidebarLine.BorderSizePixel = 0
+local tabLine = Instance.new("Frame", tabBar)
+tabLine.Size = UDim2.new(1, 0, 0, 1)
+tabLine.Position = UDim2.new(0, 0, 1, -1)
+tabLine.BackgroundColor3 = COL_OFF
+tabLine.BorderSizePixel = 0
 
-local tabList = Instance.new("Frame", sidebar)
-tabList.Size = UDim2.new(1, -12, 1, -12)
-tabList.Position = UDim2.new(0, 6, 0, 6)
+local tabList = Instance.new("Frame", tabBar)
+tabList.Size = UDim2.new(1, -16, 1, 0)
+tabList.Position = UDim2.new(0, 8, 0, 0)
 tabList.BackgroundTransparency = 1
 local tabLayout = Instance.new("UIListLayout", tabList)
-tabLayout.Padding = UDim.new(0, 3)
-tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+tabLayout.FillDirection = Enum.FillDirection.Horizontal
+tabLayout.Padding = UDim.new(0, 0)
+tabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 
 -- content
 local content = Instance.new("Frame", menu)
-content.Size = UDim2.new(1, -130, 1, -46)
-content.Position = UDim2.new(0, 130, 0, 46)
+content.Size = UDim2.new(1, -16, 1, -66)
+content.Position = UDim2.new(0, 8, 0, 58)
 content.BackgroundTransparency = 1
-pad(content, 10)
 
 local pages = {}
 local tabButtons = {}
@@ -556,31 +606,29 @@ local function createPage()
     page.Size = UDim2.new(1, 0, 1, 0)
     page.BackgroundTransparency = 1
     page.BorderSizePixel = 0
-    page.ScrollBarThickness = 3
+    page.ScrollBarThickness = 2
     page.ScrollBarImageColor3 = COL_ACCENT
     page.CanvasSize = UDim2.new(0, 0, 0, 0)
     page.AutomaticCanvasSize = Enum.AutomaticSize.Y
     page.Visible = false
     local layout = Instance.new("UIListLayout", page)
-    layout.Padding = UDim.new(0, 6)
+    layout.Padding = UDim.new(0, 4)
     return page
 end
 
 local function createTabBtn(name, order)
     local btn = Instance.new("TextButton", tabList)
-    btn.Size = UDim2.new(1, 0, 0, 32)
-    btn.BackgroundColor3 = COL_BTN
+    btn.Name = name
+    btn.Size = UDim2.new(0, 70, 1, 0)
+    btn.BackgroundColor3 = COL_HEADER
     btn.BackgroundTransparency = 1
     btn.BorderSizePixel = 0
-    btn.Font = Enum.Font.GothamBold
+    btn.Font = MONO_B
     btn.Text = name
     btn.TextColor3 = COL_DIM
-    btn.TextSize = 11
-    btn.TextXAlignment = Enum.TextXAlignment.Left
+    btn.TextSize = 10
     btn.AutoButtonColor = false
     btn.LayoutOrder = order
-    corner(btn, 5)
-    pad(btn, 10)
     tabButtons[name] = btn
     return btn
 end
@@ -589,23 +637,23 @@ local function selectTab(name)
     for n, p in pairs(pages) do p.Visible = (n == name) end
     for n, btn in pairs(tabButtons) do
         local active = n == name
-        Tween:Create(btn, TweenInfo.new(0.15), {
-            BackgroundColor3 = active and COL_ACCENT or COL_BTN,
+        Tween:Create(btn, TweenInfo.new(0.1), {
+            TextColor3 = active and COL_ACCENT or COL_DIM,
             BackgroundTransparency = active and 0 or 1,
-            TextColor3 = active and COL_BG or COL_DIM,
+            BackgroundColor3 = COL_ACCENT,
         }):Play()
     end
 end
 
 local function section(parent, title)
     local row = Instance.new("Frame", parent)
-    row.Size = UDim2.new(1, 0, 0, 18)
+    row.Size = UDim2.new(1, 0, 0, 16)
     row.BackgroundTransparency = 1
     local lbl = Instance.new("TextLabel", row)
     lbl.Size = UDim2.new(1, 0, 1, 0)
     lbl.BackgroundTransparency = 1
-    lbl.Font = Enum.Font.GothamBold
-    lbl.Text = title
+    lbl.Font = MONO_B
+    lbl.Text = "-- " .. title
     lbl.TextColor3 = COL_ACCENT2
     lbl.TextSize = 10
     lbl.TextXAlignment = Enum.TextXAlignment.Left
@@ -614,37 +662,47 @@ end
 
 local function makeToggle(parent, label, key, onChange)
     local row = Instance.new("Frame", parent)
-    row.Size = UDim2.new(1, 0, 0, 26)
+    row.Size = UDim2.new(1, 0, 0, 22)
     row.BackgroundTransparency = 1
     local lbl = Instance.new("TextLabel", row)
-    lbl.Size = UDim2.new(1, -50, 1, 0)
+    lbl.Size = UDim2.new(1, -44, 1, 0)
     lbl.BackgroundTransparency = 1
-    lbl.Font = Enum.Font.Gotham
+    lbl.Font = MONO
     lbl.Text = label
     lbl.TextColor3 = COL_TEXT
-    lbl.TextSize = 12
+    lbl.TextSize = 11
     lbl.TextXAlignment = Enum.TextXAlignment.Left
-    local track = Instance.new("Frame", row)
-    track.Size = UDim2.new(0, 32, 0, 16)
-    track.Position = UDim2.new(1, -32, 0.5, -8)
-    track.BackgroundColor3 = C[key] and COL_ACCENT or COL_OFF
-    track.BorderSizePixel = 0
-    corner(track, 8)
-    local knob = Instance.new("Frame", track)
-    knob.Size = UDim2.new(0, 12, 0, 12)
-    knob.Position = C[key] and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
-    knob.BackgroundColor3 = Color3.fromRGB(230, 220, 240)
-    knob.BorderSizePixel = 0
-    corner(knob, 6)
+
+    local box = Instance.new("Frame", row)
+    box.Size = UDim2.new(0, 12, 0, 12)
+    box.Position = UDim2.new(1, -14, 0.5, -6)
+    box.BackgroundColor3 = C[key] and COL_ACCENT or COL_BTN
+    box.BorderSizePixel = 0
+    corner(box, 2)
+    stroke(box, C[key] and COL_ACCENT or COL_OFF, 1, 0.2)
+
+    local check = Instance.new("TextLabel", box)
+    check.Size = UDim2.new(1, 0, 1, 0)
+    check.BackgroundTransparency = 1
+    check.Font = MONO_B
+    check.Text = C[key] and "✓" or ""
+    check.TextColor3 = COL_BG
+    check.TextSize = 10
+
     local btn = Instance.new("TextButton", row)
     btn.Size = UDim2.new(1, 0, 1, 0)
     btn.BackgroundTransparency = 1
     btn.Text = ""
+
     local function update()
         local on = C[key]
-        Tween:Create(track, TweenInfo.new(0.16), {BackgroundColor3 = on and COL_ACCENT or COL_OFF}):Play()
-        Tween:Create(knob, TweenInfo.new(0.16), {Position = on and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)}):Play()
+        Tween:Create(box, TweenInfo.new(0.12), {
+            BackgroundColor3 = on and COL_ACCENT or COL_BTN,
+        }):Play()
+        box.UIStroke.Color = on and COL_ACCENT or COL_OFF
+        check.Text = on and "✓" or ""
     end
+
     btn.MouseButton1Click:Connect(function()
         C[key] = not C[key]
         update()
@@ -655,7 +713,7 @@ end
 
 local function makeSlider(parent, label, key, min, max, suffix, onChange)
     local row = Instance.new("Frame", parent)
-    row.Size = UDim2.new(1, 0, 0, 38)
+    row.Size = UDim2.new(1, 0, 0, 34)
     row.BackgroundTransparency = 1
     local top = Instance.new("Frame", row)
     top.Size = UDim2.new(1, 0, 0, 16)
@@ -663,7 +721,7 @@ local function makeSlider(parent, label, key, min, max, suffix, onChange)
     local lbl = Instance.new("TextLabel", top)
     lbl.Size = UDim2.new(0.7, 0, 1, 0)
     lbl.BackgroundTransparency = 1
-    lbl.Font = Enum.Font.Gotham
+    lbl.Font = MONO
     lbl.Text = label
     lbl.TextColor3 = COL_TEXT
     lbl.TextSize = 11
@@ -672,24 +730,22 @@ local function makeSlider(parent, label, key, min, max, suffix, onChange)
     val.Size = UDim2.new(0.3, 0, 1, 0)
     val.Position = UDim2.new(0.7, 0, 0, 0)
     val.BackgroundTransparency = 1
-    val.Font = Enum.Font.GothamBold
+    val.Font = MONO_B
     val.Text = tostring(C[key]) .. (suffix or "")
     val.TextColor3 = COL_ACCENT
-    val.TextSize = 11
+    val.TextSize = 10
     val.TextXAlignment = Enum.TextXAlignment.Right
     local bar = Instance.new("Frame", row)
-    bar.Size = UDim2.new(1, 0, 0, 4)
-    bar.Position = UDim2.new(0, 0, 0, 24)
+    bar.Size = UDim2.new(1, 0, 0, 3)
+    bar.Position = UDim2.new(0, 0, 0, 22)
     bar.BackgroundColor3 = COL_OFF
     bar.BorderSizePixel = 0
-    corner(bar, 2)
     local fill = Instance.new("Frame", bar)
     fill.Size = UDim2.new((C[key] - min) / (max - min), 0, 1, 0)
     fill.BackgroundColor3 = COL_ACCENT
     fill.BorderSizePixel = 0
-    corner(fill, 2)
     local btn = Instance.new("TextButton", row)
-    btn.Size = UDim2.new(1, 0, 0, 18)
+    btn.Size = UDim2.new(1, 0, 0, 14)
     btn.Position = UDim2.new(0, 0, 0, 16)
     btn.BackgroundTransparency = 1
     btn.Text = ""
@@ -700,7 +756,7 @@ local function makeSlider(parent, label, key, min, max, suffix, onChange)
         v = math.floor(v * 100 + 0.5) / 100
         C[key] = v
         val.Text = tostring(v) .. (suffix or "")
-        Tween:Create(fill, TweenInfo.new(0.06), {Size = UDim2.new(rel, 0, 1, 0)}):Play()
+        fill.Size = UDim2.new(rel, 0, 1, 0)
         if onChange then pcall(onChange, v) end
     end
     btn.InputBegan:Connect(function(i)
@@ -721,23 +777,24 @@ end
 
 local function makeBtnRow(parent, items)
     local row = Instance.new("Frame", parent)
-    row.Size = UDim2.new(1, 0, 0, 26)
+    row.Size = UDim2.new(1, 0, 0, 22)
     row.BackgroundTransparency = 1
     local btns = {}
     local count = #items
     local w = (1 / count) - 0.01
     for i, item in ipairs(items) do
         local b = Instance.new("TextButton", row)
-        b.Size = UDim2.new(w - 0.008, 0, 1, 0)
+        b.Size = UDim2.new(w - 0.006, 0, 1, 0)
         b.Position = UDim2.new((i-1) * w, 0, 0, 0)
         b.BackgroundColor3 = COL_BTN
         b.BorderSizePixel = 0
-        b.Font = Enum.Font.GothamBold
+        b.Font = MONO_B
         b.Text = item[1]
         b.TextColor3 = COL_DIM
         b.TextSize = 10
         b.AutoButtonColor = false
-        corner(b, 4)
+        corner(b, 2)
+        stroke(b, COL_OFF, 1, 0.3)
         table.insert(btns, b)
         b.MouseButton1Click:Connect(function()
             for _, other in ipairs(btns) do
@@ -753,61 +810,62 @@ local function makeBtnRow(parent, items)
         btns[1].BackgroundColor3 = COL_ACCENT
         btns[1].TextColor3 = COL_BG
     end
-    return row, btns
+    return row
 end
 
 local function makeButton(parent, label, callback, color)
     local btn = Instance.new("TextButton", parent)
-    btn.Size = UDim2.new(1, 0, 0, 26)
+    btn.Size = UDim2.new(1, 0, 0, 22)
     btn.BackgroundColor3 = COL_BTN
     btn.BorderSizePixel = 0
-    btn.Font = Enum.Font.GothamBold
+    btn.Font = MONO_B
     btn.Text = label
     btn.TextColor3 = color or COL_TEXT
-    btn.TextSize = 11
+    btn.TextSize = 10
     btn.AutoButtonColor = false
-    corner(btn, 4)
+    corner(btn, 2)
+    stroke(btn, COL_OFF, 1, 0.3)
     btn.MouseEnter:Connect(function()
-        Tween:Create(btn, TweenInfo.new(0.12), {BackgroundColor3 = COL_ACCENT}):Play()
+        Tween:Create(btn, TweenInfo.new(0.1), {BackgroundColor3 = COL_ACCENT}):Play()
         btn.TextColor3 = COL_BG
     end)
     btn.MouseLeave:Connect(function()
-        Tween:Create(btn, TweenInfo.new(0.12), {BackgroundColor3 = COL_BTN}):Play()
+        Tween:Create(btn, TweenInfo.new(0.1), {BackgroundColor3 = COL_BTN}):Play()
         btn.TextColor3 = color or COL_TEXT
     end)
     btn.MouseButton1Click:Connect(function()
         local ok, err = pcall(callback)
-        if not ok then warn("[LOCK] " .. tostring(err)) end
+        if not ok then warn("[azraeell] " .. tostring(err)) end
     end)
     return btn
 end
 
--- pages
+-- ===== PAGES =====
 local pageLock = createPage()
 local pageTarget = createPage()
-local pageFly = createPage()
+local pageMove = createPage()
 local pagePerf = createPage()
 local pagePlayers = createPage()
 
 pages["LOCK"] = pageLock
 pages["TARGET"] = pageTarget
-pages["FLY"] = pageFly
+pages["MOVE"] = pageMove
 pages["PERF"] = pagePerf
 pages["PLAYERS"] = pagePlayers
 
 local tabLock = createTabBtn("LOCK", 1)
 local tabTarget = createTabBtn("TARGET", 2)
-local tabFly = createTabBtn("FLY", 3)
+local tabMove = createTabBtn("MOVE", 3)
 local tabPerf = createTabBtn("PERF", 4)
 local tabPlayers = createTabBtn("PLAYERS", 5)
 
 tabLock.MouseButton1Click:Connect(function() selectTab("LOCK") end)
 tabTarget.MouseButton1Click:Connect(function() selectTab("TARGET") end)
-tabFly.MouseButton1Click:Connect(function() selectTab("FLY") end)
+tabMove.MouseButton1Click:Connect(function() selectTab("MOVE") end)
 tabPerf.MouseButton1Click:Connect(function() selectTab("PERF") end)
 tabPlayers.MouseButton1Click:Connect(function() selectTab("PLAYERS") end)
 
--- === LOCK ===
+-- LOCK
 section(pageLock, "BUTTON")
 makeBtnRow(pageLock, {
     {"E", "E", function() C.lockButton = "E" end},
@@ -819,47 +877,50 @@ makeBtnRow(pageLock, {
     {"HOLD", "hold", function() C.mode = "hold" end},
     {"TOGGLE", "toggle", function() C.mode = "toggle" end},
 })
-section(pageLock, "PART")
+section(pageLock, "BONE")
 makeBtnRow(pageLock, {
     {"HEAD", "Head", function() C.targetPart = "Head"; clearAllHighlights() end},
     {"CHEST", "UpperTorso", function() C.targetPart = "UpperTorso"; clearAllHighlights() end},
     {"ROOT", "HumanoidRootPart", function() C.targetPart = "HumanoidRootPart"; clearAllHighlights() end},
 })
 section(pageLock, "SETTINGS")
-makeSlider(pageLock, "Smooth", "smooth", 0.05, 1, "")
-makeToggle(pageLock, "Team check", "teamCheck")
-makeToggle(pageLock, "Ignore dead", "ignoreDead")
+makeSlider(pageLock, "smooth", "smooth", 0.05, 1, "")
+makeToggle(pageLock, "team check", "teamCheck")
+makeToggle(pageLock, "ignore dead", "ignoreDead")
+makeToggle(pageLock, "auto tab switch", "autoTabSwitch")
 
--- === TARGET ===
+-- TARGET
 section(pageTarget, "VISUAL")
-makeToggle(pageTarget, "Highlight", "showHighlight", function(v)
+makeToggle(pageTarget, "highlight", "showHighlight", function(v)
     if not v then clearAllHighlights() end
 end)
-makeToggle(pageTarget, "Dot", "showDot")
-makeToggle(pageTarget, "Arrow", "showArrow")
-makeToggle(pageTarget, "Distance", "showDistance")
-section(pageTarget, "HP")
-makeToggle(pageTarget, "Show HP bar", "showHpBar")
-makeToggle(pageTarget, "Show armor", "showArmor")
-section(pageTarget, "HIT SOUND")
-makeToggle(pageTarget, "Enable", "hitSoundEnabled")
+makeToggle(pageTarget, "dot", "showDot")
+makeToggle(pageTarget, "arrow", "showArrow")
+makeToggle(pageTarget, "distance", "showDistance")
+section(pageTarget, "INFO")
+makeToggle(pageTarget, "hp bar", "showHpBar")
+makeToggle(pageTarget, "armor", "showArmor")
+section(pageTarget, "HIT")
+makeToggle(pageTarget, "sound", "hitSoundEnabled")
+makeToggle(pageTarget, "hitmarker", "hitmarkerEnabled")
 
 local soundRow = Instance.new("Frame", pageTarget)
-soundRow.Size = UDim2.new(1, 0, 0, 26)
+soundRow.Size = UDim2.new(1, 0, 0, 22)
 soundRow.BackgroundColor3 = COL_BTN
 soundRow.BorderSizePixel = 0
-corner(soundRow, 4)
-pad(soundRow, 6)
+corner(soundRow, 2)
+stroke(soundRow, COL_OFF, 1, 0.3)
+pad(soundRow, 4)
 
 local soundInput = Instance.new("TextBox", soundRow)
 soundInput.Size = UDim2.new(1, 0, 1, 0)
 soundInput.BackgroundTransparency = 1
-soundInput.Font = Enum.Font.Gotham
+soundInput.Font = MONO
 soundInput.Text = C.hitSoundId
 soundInput.PlaceholderText = "rbxassetid://..."
 soundInput.TextColor3 = COL_ACCENT
 soundInput.PlaceholderColor3 = COL_DIM
-soundInput.TextSize = 11
+soundInput.TextSize = 10
 soundInput.ClearTextOnFocus = false
 soundInput.TextXAlignment = Enum.TextXAlignment.Left
 soundInput.FocusLost:Connect(function()
@@ -867,34 +928,38 @@ soundInput.FocusLost:Connect(function()
     soundInput.Text = C.hitSoundId
 end)
 
-makeSlider(pageTarget, "Volume", "hitSoundVolume", 0, 1, "")
-makeButton(pageTarget, "Test sound", playHitSound)
+makeSlider(pageTarget, "volume", "hitSoundVolume", 0, 1, "")
+makeButton(pageTarget, "test sound", playHitSound)
 
--- === FLY ===
-section(pageFly, "FLY (V)")
-makeSlider(pageFly, "Speed", "flySpeed", 15, 150, "")
-makeSlider(pageFly, "Vertical", "flyVertical", 10, 100, "")
-makeSlider(pageFly, "Smooth", "flySmooth", 2, 30, "")
-section(pageFly, "FOV")
-makeSlider(pageFly, "FOV", "fov", 60, 120, "", function(v)
+-- MOVE
+section(pageMove, "FLY")
+makeSlider(pageMove, "speed", "flySpeed", 15, 150, "")
+makeSlider(pageMove, "vertical", "flyVertical", 10, 100, "")
+makeSlider(pageMove, "smooth", "flySmooth", 2, 30, "")
+section(pageMove, "COMBAT")
+makeToggle(pageMove, "fast stop", "fastStop")
+makeToggle(pageMove, "fast reload", "fastReload")
+makeSlider(pageMove, "reload speed", "fastReloadSpeed", 1, 3, "x")
+section(pageMove, "FOV")
+makeSlider(pageMove, "fov", "fov", 60, 120, "", function(v)
     if cam then cam.FieldOfView = v end
 end)
-makeBtnRow(pageFly, {
+makeBtnRow(pageMove, {
     {"70", 70, function() C.fov = 70; if cam then cam.FieldOfView = 70 end end},
     {"90", 90, function() C.fov = 90; if cam then cam.FieldOfView = 90 end end},
     {"110", 110, function() C.fov = 110; if cam then cam.FieldOfView = 110 end end},
 })
 
--- === PERF ===
+-- PERF
 section(pagePerf, "NO SLOWDOWN")
-makeToggle(pagePerf, "Enable", "noSlowdownEnabled")
-makeSlider(pagePerf, "Speed", "noSlowdownSpeed", 8, 30, "")
+makeToggle(pagePerf, "enabled", "noSlowdownEnabled")
+makeSlider(pagePerf, "speed", "noSlowdownSpeed", 8, 30, "")
 section(pagePerf, "FPS")
-makeToggle(pagePerf, "FPS booster", "fpsBooster", function(v)
+makeToggle(pagePerf, "fps booster", "fpsBooster", function(v)
     if v then enableFpsBooster() else disableFpsBooster() end
 end)
 section(pagePerf, "ACTIONS")
-makeButton(pagePerf, "Unload", function()
+makeButton(pagePerf, "unload script", function()
     pcall(function() disableFpsBooster() end)
     pcall(function() gui:Destroy() end)
     pcall(function() hud:Destroy() end)
@@ -902,77 +967,63 @@ makeButton(pagePerf, "Unload", function()
     _G.__azraeell_loaded = false
 end, COL_DANGER)
 
--- === PLAYERS ===
+-- PLAYERS
 local playersScroll = Instance.new("ScrollingFrame", pagePlayers)
 playersScroll.Size = UDim2.new(1, 0, 1, 0)
 playersScroll.BackgroundTransparency = 1
 playersScroll.BorderSizePixel = 0
-playersScroll.ScrollBarThickness = 3
+playersScroll.ScrollBarThickness = 2
 playersScroll.ScrollBarImageColor3 = COL_ACCENT
 playersScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 playersScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 
 local plrLayout = Instance.new("UIListLayout", playersScroll)
-plrLayout.Padding = UDim.new(0, 4)
+plrLayout.Padding = UDim.new(0, 2)
 plrLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
--- hide the createPage players frame (we use our own)
 pagePlayers.Visible = false
 
 local listRows = {}
 
 local function buildRow(p)
     local row = Instance.new("TextButton", playersScroll)
-    row.Size = UDim2.new(1, -4, 0, 32)
+    row.Size = UDim2.new(1, -4, 0, 24)
     row.BackgroundColor3 = COL_BTN
     row.BorderSizePixel = 0
     row.Text = ""
     row.AutoButtonColor = false
-    corner(row, 5)
+    corner(row, 2)
 
     local name = Instance.new("TextLabel", row)
-    name.Size = UDim2.new(1, -50, 0, 18)
-    name.Position = UDim2.new(0, 10, 0, 2)
+    name.Size = UDim2.new(1, -60, 1, 0)
+    name.Position = UDim2.new(0, 6, 0, 0)
     name.BackgroundTransparency = 1
-    name.Font = Enum.Font.GothamBold
+    name.Font = MONO
     name.Text = p.Name
     name.TextColor3 = COL_TEXT
-    name.TextSize = 11
+    name.TextSize = 10
     name.TextXAlignment = Enum.TextXAlignment.Left
     name.TextTruncate = Enum.TextTruncate.AtEnd
 
     local info = Instance.new("TextLabel", row)
-    info.Size = UDim2.new(1, -50, 0, 12)
-    info.Position = UDim2.new(0, 10, 0, 18)
+    info.Size = UDim2.new(0, 40, 1, 0)
+    info.Position = UDim2.new(1, -46, 0, 0)
     info.BackgroundTransparency = 1
-    info.Font = Enum.Font.Gotham
-    info.Text = "HP —"
+    info.Font = MONO
+    info.Text = "—"
     info.TextColor3 = COL_DIM
     info.TextSize = 9
-    info.TextXAlignment = Enum.TextXAlignment.Left
-
-    local badge = Instance.new("TextLabel", row)
-    badge.Size = UDim2.new(0, 26, 1, 0)
-    badge.Position = UDim2.new(1, -28, 0, 0)
-    badge.BackgroundTransparency = 1
-    badge.Font = Enum.Font.GothamBold
-    badge.Text = ""
-    badge.TextColor3 = COL_ACCENT
-    badge.TextSize = 13
-    badge.TextXAlignment = Enum.TextXAlignment.Center
+    info.TextXAlignment = Enum.TextXAlignment.Right
 
     local function setActive(on)
         if on then
             row.BackgroundColor3 = COL_ACCENT
             name.TextColor3 = COL_BG
             info.TextColor3 = COL_BG
-            badge.Text = "✓"
-            badge.TextColor3 = COL_BG
         else
             row.BackgroundColor3 = COL_BTN
             name.TextColor3 = COL_TEXT
             info.TextColor3 = COL_DIM
-            badge.Text = ""
         end
     end
 
@@ -1009,23 +1060,23 @@ Players.PlayerRemoving:Connect(function(p)
     refreshList()
 end)
 
--- one slow loop for HP + highlights (every 1.5 sec)
+-- slow loop
 task.spawn(function()
     while _G.__azraeell_loaded do
-        task.wait(1.5)
+        task.wait(1.2)
         for n, r in pairs(listRows) do
             local p = Players:FindFirstChild(n)
             if p and p.Character then
                 local h = p.Character:FindFirstChildOfClass("Humanoid")
                 if h then
-                    r.info.Text = "HP " .. math.floor(h.Health)
+                    r.info.Text = math.floor(h.Health) .. "hp"
                     r.info.TextColor3 = (h.Health <= 0) and COL_DANGER or COL_DIM
                 end
             else
                 r.info.Text = "—"
             end
         end
-        if not locked then updateHighlights() else updateHighlights() end
+        updateHighlights()
     end
 end)
 
@@ -1036,29 +1087,42 @@ selectTab("LOCK")
 -- ============================================================
 UIS.InputBegan:Connect(function(input, gp)
     if gp then return end
-    if input.KeyCode == C.flyKey and not UIS:GetFocusedTextBox() then
+    if UIS:GetFocusedTextBox() then return end
+
+    if input.KeyCode == C.flyKey then
         flyActive = not flyActive
-        flyFrame.Visible = flyActive
         if not flyActive then flyVel = Vector3.zero end
     end
-    if C.mode == "toggle" and not UIS:GetFocusedTextBox() then
+
+    if input.KeyCode == Enum.KeyCode.Tab then
+        cycleIndex = cycleIndex + 1
+    end
+
+    if C.mode == "toggle" then
         local hit = false
         if C.lockButton == "E" and input.KeyCode == Enum.KeyCode.E then hit = true end
         if C.lockButton == "Q" and input.KeyCode == Enum.KeyCode.Q then hit = true end
         if C.lockButton == "RMB" and input.UserInputType == Enum.UserInputType.MouseButton2 then hit = true end
         if hit then locked = not locked end
     end
+
+    if input.KeyCode == Enum.KeyCode.End then
+        pcall(function() disableFpsBooster() end)
+        pcall(function() gui:Destroy() end)
+        pcall(function() hud:Destroy() end)
+        clearAllHighlights()
+        _G.__azraeell_loaded = false
+    end
 end)
 
 plr.CharacterAdded:Connect(function()
     flyActive = false
     flyVel = Vector3.zero
-    flyFrame.Visible = false
     _char = nil
 end)
 
 -- ============================================================
--- MAIN LOOP — HEARTBEAT (не RenderStepped — легче)
+-- MAIN LOOP
 -- ============================================================
 RS.Heartbeat:Connect(function(dt)
     if not _G.__azraeell_loaded then return end
@@ -1066,10 +1130,40 @@ RS.Heartbeat:Connect(function(dt)
     local char, hrp, hum = getMyChar()
     if not char or not hrp or not hum then return end
 
-    -- no slowdown (внутри главного цикла, не отдельным RenderStepped)
+    -- no slowdown
     if C.noSlowdownEnabled and hum.Health > 0 then
         if hum.WalkSpeed < C.noSlowdownSpeed then
             hum.WalkSpeed = C.noSlowdownSpeed
+        end
+    end
+
+    -- fast stop
+    if C.fastStop and hum.Health > 0 then
+        local st = hum:GetState()
+        local onG = st == Enum.HumanoidStateType.Running or st == Enum.HumanoidStateType.Landed
+        if onG and hum.MoveDirection.Magnitude < 0.01 then
+            local v = hrp.AssemblyLinearVelocity
+            if math.abs(v.X) > 0.5 or math.abs(v.Z) > 0.5 then
+                hrp.AssemblyLinearVelocity = Vector3.new(0, v.Y, 0)
+            end
+        end
+    end
+
+    -- fast reload
+    if C.fastReload then
+        local animator = hum:FindFirstChildOfClass("Animator")
+        if animator then
+            local tracks = animator:GetPlayingAnimationTracks()
+            for _, track in ipairs(tracks) do
+                if track.Animation and track.Animation.Name then
+                    local n = track.Animation.Name:lower()
+                    if n:find("reload") or n:find("reloadanim") then
+                        if track.Speed ~= C.fastReloadSpeed then
+                            track:AdjustSpeed(C.fastReloadSpeed)
+                        end
+                    end
+                end
+            end
         end
     end
 
@@ -1085,13 +1179,12 @@ RS.Heartbeat:Connect(function(dt)
     local count = countSelected()
 
     if not locked then
-        statusLbl.Text = (count > 0) and ("TARGETS " .. count .. "  •  OFF") or "LOCK OFF"
+        statusLbl.Text = "IDLE" .. (count > 0 and (" // " .. count .. " TRG") or "")
         statusLbl.TextColor3 = COL_DIM
         statusStroke.Color = COL_DANGER
         statusStroke.Transparency = 0.5
         dot.Visible = false
         arrow.Visible = false
-        distLbl.Text = ""
         hpFrame.Visible = false
         lastTargetName = nil
         lastTargetHp = nil
@@ -1099,31 +1192,47 @@ RS.Heartbeat:Connect(function(dt)
     end
 
     if count == 0 then
-        statusLbl.Text = "LOCK  •  no targets"
+        statusLbl.Text = "LOCK // NO TRG"
         statusLbl.TextColor3 = COL_DANGER
         statusStroke.Color = COL_DANGER
         dot.Visible = false
         arrow.Visible = false
         hpFrame.Visible = false
         return
+    end
+
+    -- auto tab switch: если все мертвы, сбрасываем индекс
+    local alive = getSortedAlive()
+    if #alive == 0 then
+        statusLbl.Text = "LOCK // ALL DEAD"
+        statusLbl.TextColor3 = COL_DANGER
+        statusStroke.Color = COL_DANGER
+        dot.Visible = false
+        arrow.Visible = false
+        hpFrame.Visible = false
+        return
+    end
+
+    if C.autoTabSwitch and cycleIndex > #alive then
+        cycleIndex = 1
     end
 
     local part, tplr, dist = findNearestTarget()
     if not part then
-        statusLbl.Text = "LOCK  •  none alive"
+        statusLbl.Text = "LOCK // NO TRG"
         statusLbl.TextColor3 = COL_DANGER
-        statusStroke.Color = COL_DANGER
         dot.Visible = false
         arrow.Visible = false
         hpFrame.Visible = false
         return
     end
 
-    statusLbl.Text = "LOCK  •  " .. tplr.Name
+    statusLbl.Text = "LOCK // " .. tplr.Name
     statusLbl.TextColor3 = COL_SUCCESS
     statusStroke.Color = COL_SUCCESS
     statusStroke.Transparency = 0.2
 
+    -- hp
     if C.showHpBar and tplr.Character then
         local th = tplr.Character:FindFirstChildOfClass("Humanoid")
         if th then
@@ -1132,7 +1241,7 @@ RS.Heartbeat:Connect(function(dt)
             hpBarFill.Size = UDim2.new(ratio, 0, 1, 0)
             hpBarText.Text = math.floor(th.Health) .. "/" .. math.floor(th.MaxHealth)
 
-            local col = Color3.fromRGB(90, 220, 140)
+            local col = COL_SUCCESS
             if ratio < 0.5 then col = Color3.fromRGB(240, 200, 80) end
             if ratio < 0.25 then col = COL_DANGER end
             hpBarFill.BackgroundColor3 = col
@@ -1140,18 +1249,20 @@ RS.Heartbeat:Connect(function(dt)
             local armorStr = ""
             if C.showArmor then
                 local arm = getArmor(tplr)
-                if arm then armorStr = "  •  ARM " .. math.floor(arm) end
+                if arm then armorStr = " // arm " .. math.floor(arm) end
             end
             hpTop.Text = tplr.Name .. armorStr
             hpStroke.Color = col
 
+            -- hitmarker + sound
             if lastTargetName ~= tplr.Name then
                 lastTargetName = tplr.Name
                 lastTargetHp = th.Health
             else
                 if lastTargetHp and th.Health < lastTargetHp - 0.5 then
-                    if tick() - lastSoundAt > 0.12 then
+                    if tick() - lastSoundAt > 0.1 then
                         lastSoundAt = tick()
+                        showHitmarker()
                         playHitSound()
                     end
                 end
@@ -1171,8 +1282,6 @@ RS.Heartbeat:Connect(function(dt)
         dot.Visible = false
     end
 
-    distLbl.Text = C.showDistance and (math.floor(dist) .. " st") or ""
-
     if C.showArrow and not onScreen then
         arrow.Visible = true
         local vp = cam.ViewportSize
@@ -1189,15 +1298,15 @@ RS.Heartbeat:Connect(function(dt)
     end
 end)
 
--- camera lerp — RenderStepped (единственный, лёгкий)
+-- camera lerp
 RS.RenderStepped:Connect(function(dt)
     if not _G.__azraeell_loaded then return end
-    if not locked then return end
     if cam and cam.FieldOfView ~= C.fov then cam.FieldOfView = C.fov end
+    if not locked then return end
 
     local _, _, hum = getMyChar()
     if not hum then return end
-    local part, _ = findNearestTarget()
+    local part = findNearestTarget()
     if not part then return end
 
     local desired = CFrame.lookAt(cam.CFrame.Position, part.Position)
@@ -1206,10 +1315,9 @@ RS.RenderStepped:Connect(function(dt)
 end)
 
 -- ============================================================
--- MENU OPEN / CLOSE
+-- MENU OPEN/CLOSE
 -- ============================================================
 local menuOpen = false
-
 local function openMenu()
     menuOpen = true
     menu.Visible = true
@@ -1222,7 +1330,7 @@ local function closeMenu()
     UIS.MouseBehavior = Enum.MouseBehavior.LockCenter
 end
 
-RS:BindToRenderStep("AzraeellMouseUnlock", Enum.RenderPriority.Camera.Value + 1, function()
+RS:BindToRenderStep("AzraeellMouse", Enum.RenderPriority.Camera.Value + 1, function()
     if menuOpen then
         if UIS.MouseBehavior ~= Enum.MouseBehavior.Default then
             UIS.MouseBehavior = Enum.MouseBehavior.Default
@@ -1233,13 +1341,12 @@ end)
 
 closeBtn.MouseButton1Click:Connect(closeMenu)
 closeBtn.MouseEnter:Connect(function()
-    Tween:Create(closeBtn, TweenInfo.new(0.12), {BackgroundColor3 = COL_DANGER, TextColor3 = Color3.new(1,1,1)}):Play()
+    Tween:Create(closeBtn, TweenInfo.new(0.1), {TextColor3 = COL_ACCENT}):Play()
 end)
 closeBtn.MouseLeave:Connect(function()
-    Tween:Create(closeBtn, TweenInfo.new(0.12), {BackgroundColor3 = COL_BTN, TextColor3 = COL_DIM}):Play()
+    Tween:Create(closeBtn, TweenInfo.new(0.1), {TextColor3 = COL_DIM}):Play()
 end)
 
--- drag
 do
     local dragging, dragStart, startPos
     header.InputBegan:Connect(function(input)
@@ -1264,16 +1371,10 @@ end
 
 UIS.InputBegan:Connect(function(i, gp)
     if gp then return end
-    if i.KeyCode == Enum.KeyCode.RightShift and not UIS:GetFocusedTextBox() then
+    if i.KeyCode == C.menuKey and not UIS:GetFocusedTextBox() then
         if menuOpen then closeMenu() else openMenu() end
-    elseif i.KeyCode == Enum.KeyCode.End then
-        pcall(function() disableFpsBooster() end)
-        pcall(function() gui:Destroy() end)
-        pcall(function() hud:Destroy() end)
-        clearAllHighlights()
-        _G.__azraeell_loaded = false
     end
 end)
 
 _G.__azraeell_loaded = true
-print("[azraeell] v14 loaded — lag fixed")
+print("[azraeell] v15 loaded")
